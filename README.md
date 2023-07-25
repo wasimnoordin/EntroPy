@@ -1,2 +1,2 @@
 # EntroPy
-Backtesting Package for ML-Driven Algorithmic Trading
+Portfolio Optimisation Package using Efficient Frontier and Monte Carlo to support Algorithmic Trading Strategies
