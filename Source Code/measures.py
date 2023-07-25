@@ -20,7 +20,7 @@ def calculate_stratified_average(avg_asset_value, portion_of_investment):
 
     #Check input types
     for arg, arg_name in [(avg_asset_value, 'avg_asset_value'), (portion_of_investment, 'portion_of_investment')]:
-        if not isinstance(arg, (pd.Series, np.ndarray)):
+        if not isinstance(arg, (pandas.Series, numpy.ndarray)):
             raise ValueError(f"{arg_name} must be a pandas.Series or numpy.ndarray")
 
     # Compute and return the stratified average
