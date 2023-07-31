@@ -86,7 +86,7 @@ def calculate_sharpe_ratio(portfolio_return, portfolio_volatility, risk_free_ROR
     sharpe_ratio = excess_return / portfolio_volatility if portfolio_volatility else 'inf'
     return sharpe_ratio
 
-def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0.99):
+def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0.95):
     """
     Calculates the Value at Risk (VaR) of an a given asset.
 
@@ -129,7 +129,7 @@ def calculate_annualisation_of_measures(proportion_of_investment, avg_asset_valu
     - dispersion_matrix: numpy array or pandas series of the portfolio's dispersion matrix.
     - risk_free_ROR (optional): The risk-free rate of return. Obtained as 5.427% on 28/07/23 
                                 from https://www.marketwatch.com/investing/bond/tmubmusd03m?countrycode=bx
-    - trading_days (optional): Numeric, average number of regular trading days in a year. 
+    - regular_trading_days (optional): Numeric, average number of regular trading days in a year. 
                                 Setpoint: 252 days. Taken from: https://en.wikipedia.org/wiki/Trading_day
 
     Returns:
