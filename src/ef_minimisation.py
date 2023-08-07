@@ -34,10 +34,16 @@ def calculate_annualized_volatility(proportion_of_investment, avg_revenue, disp_
     return annualised_volatility
 
 def calculate_inverse_sharpe_ratio(proportion_of_investment, avg_revenue, disp_matrix, risk_free_ROR):
-    """Calculates the negative Sharpe ratio of a portfolio ##REWORD and ELABORATE ON COMMENT
+    """Calculates the negative Sharpe ratio of a portfolio 
     Parameters:
+     -- portion_of_investment: numpy array of allocation of each investment
+     -- avg_revenue: numpy array or pandas series of average asset returns
+     -- dis_matrix: numpy array or pandas series of dispersion matrix alligned with returns
+     -- risk_free_ROR: Numeric, risk-free rate of return. Obtained as 5.427% on 28/07/23 
+                                from https://www.marketwatch.com/investing/bond/tmubmusd03m?countrycode=bx
 
     Returns:
+     -- inverse_sharpe_ratio: negative of Sharpe Ratio. This is done as our objective function to be minimized.                      
     """
 
     # Check if porportions are provided as a list and convert to numpy array
@@ -69,12 +75,16 @@ def calculate_inverse_sharpe_ratio(proportion_of_investment, avg_revenue, disp_m
     # Return the inverse Sharpe ratio
     return -(min_sharpe_ratio)
 
-def portfolio_return(proportion_of_investment, avg_revenue, disp_matrix):
+def calculate_annualised_return(proportion_of_investment, avg_revenue, disp_matrix):
     """Calculates the expected annualised return of a portfolio
 
     Parameters:
+    -- portion_of_investment: numpy array of allocation of each investment
+     -- avg_revenue: numpy array or pandas series of average asset returns
+     -- dis_matrix: numpy array or pandas series of dispersion matrix alligned with returns
 
     Returns:
+      -- annualised return: annualised return measure of the portfolio
     """
 
     # Validate the input types for proportion_of_investment, avg_revenue, and disp_matrix
