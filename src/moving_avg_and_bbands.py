@@ -330,6 +330,9 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         bollinger_bands["Upper Band"] = moving_averages[window_label] + (bband_standard_deviation * 2)
 
         return bollinger_bands
+    
+    # Need to do visuals and clean up bbands computation code
+    
 
 
 
