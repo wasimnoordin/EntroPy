@@ -23,7 +23,7 @@ def moving_average_calculator(input_stock_prices: pandas.DataFrame, moving_avg_f
 def _prepare_ma_calculator_data(input_stock_prices):
     if not isinstance(input_stock_prices, (pandas.Series, pandas.DataFrame)):
         raise ValueError("data is expected to be of type pandas.Series or pandas.DataFrame")
-    return input_stock_prices.to_frame() if isinstance(input_stock_prices, pandas.Series) else input_stock_prices.copy(deep=True)
+    return input_stock_prices.to_frame() if isinstance(input_stock_prices, pandas.Series) else input_stock_prices.copy()
 
 # Compute moving averages for different window sizes
 def _compute_ma_calculator_averages(moving_average_values, moving_avg_function, window_sizes):
@@ -285,10 +285,6 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         if isinstance(input_stock_prices, pandas.Series):
             input_stock_prices = pandas.DataFrame({'stock_price': input_stock_prices})
 
-        # Check if index is a datetime index, as it's common in time series data
-        if not isinstance(input_stock_prices.index, pandas.DatetimeIndex):
-            raise ValueError("Index must be a DatetimeIndex for time series analysis.")
-
         return input_stock_prices
 
     def compute_bollinger_bands(input_stock_prices, moving_avg_function, window_size):
@@ -308,8 +304,9 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         return bollinger_bands, feature_column
 
     def _calculate_moving_average(input_stock_prices, moving_avg_function, window_size):
-        bband_moving_averages = moving_average_calculator(input_stock_prices, moving_avg_function, [window_size], plot=False)
+        bband_moving_averages = moving_average_calculator(input_stock_prices, moving_avg_function, [window_size], visualise=False)
         feature_column = input_stock_prices.columns.values[0]
+        # feature_column = input_stock_prices.iloc[:, 0].name
         return bband_moving_averages, feature_column
 
     def _calculate_standard_deviation(input_stock_prices, moving_avg_function, window_size, feature_column):
@@ -317,22 +314,73 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         standard_deviation_function = simple_moving_average_standard_deviation if moving_avg_function == simple_moving_average_mean else exponential_moving_average_standard_deviation
 
         # Compute the standard deviation
-        bband_standard_deviation = standard_deviation_function(input_stock_prices[feature_column], window_size=window_size)
+        bband_standard_deviation = standard_deviation_function(input_stock_prices[[feature_column]], window_size=window_size)
 
         return bband_standard_deviation
-
+    
     def _calculate_bollinger_bands(moving_averages, bband_standard_deviation, window_size):
         window_label = str(window_size) + "-day"
 
+        # Extract the appropriate column from bband_standard_deviation
+        std_deviation_series = bband_standard_deviation.iloc[:, 0]
+
         # Compute the Bollinger Bands
-        bollinger_bands = moving_averages.copy()
-        bollinger_bands["Lower Band"] = moving_averages[window_label] - (bband_standard_deviation * 2)
-        bollinger_bands["Upper Band"] = moving_averages[window_label] + (bband_standard_deviation * 2)
+        upper_bollinger = moving_averages[window_label] + (std_deviation_series * 2)
+        lower_bollinger = moving_averages[window_label] - (std_deviation_series * 2)
+        
+        bollinger_bands = moving_averages.assign(**{
+            "Upper BB": upper_bollinger,
+            "Lower BB": lower_bollinger
+        })
 
         return bollinger_bands
-    
-    # Need to do visuals and clean up bbands computation code
-    
+        
 
+    def plot_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function):
+        # Create an axis
+        _, axes = pyplot.subplots(nrows=1)
 
+        # Define the window label
+        window_label = str(window_size) + "-day"
 
+        # Concatenate the upper and lower Bollinger Bands
+        x_values = numpy.concatenate([bollinger_bands.index.values, bollinger_bands.index.values[::-1]])
+        y_values = numpy.concatenate([bollinger_bands["Upper BB"], bollinger_bands["Lower BB"][::-1]])
+
+        # Fill the area between the upper and lower Bollinger Bands
+        axes.fill(x_values, y_values, facecolor="#FFC0CB", alpha=0.5, label="Bollinger Band")
+        
+        # Plot the original data and moving average
+        input_stock_prices.plot(ax=axes, label='Original Data')
+        bollinger_bands[window_label].plot(ax=axes, label=f'{window_size} Day Moving Average')
+
+        # Set the title using the provided function name and window size
+        title_text = f"Bollinger Band (+/- 2 Standard Deviations) with {moving_avg_function.__name__.replace('_', ' ').title()} Moving Average over {window_size} Days"
+        title_font = {'family': 'serif', 'color': 'darkred', 'weight': 'normal', 'size': 16}
+        pyplot.title(title_text, fontdict=title_font)
+
+        # Add legend and customize its appearance
+        legend_font = {'size': 10}
+        pyplot.legend(prop=legend_font)
+
+        # Set axis labels with custom font size
+        xlabel_font = {'size': 12}
+        ylabel_font = {'size': 12}
+        pyplot.xlabel(input_stock_prices.index.name, fontdict=xlabel_font)
+        pyplot.ylabel("Price", fontdict=ylabel_font)
+
+        # Customize the appearance of the plot (optional)
+        pyplot.grid(True, linestyle='--', alpha=0.5)  # Adds a grid with dashed lines
+        pyplot.tight_layout()  # Adjusts the layout to fit all elements
+
+        # Display the plot
+        pyplot.show()
+
+    # Validate the input and convert to DataFrame if necessary
+    input_stock_prices = validate_input(input_stock_prices, window_size)
+
+    # Compute the Bollinger Bands and feature column
+    bollinger_bands, feature_column = compute_bollinger_bands(input_stock_prices, moving_avg_function, window_size)
+
+    # Plot the Bollinger Bands
+    plot_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function)
