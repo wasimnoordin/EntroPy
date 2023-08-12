@@ -283,8 +283,6 @@ class EfficientFrontierOptimization:
         self.initialization.asset_allocation_dataframe = self._asset_allocation_dframe(asset_allocation)
         return self.initialization.asset_allocation_dataframe
     
-#################### RENAME THE BEBLOW METHODS AND ABOVE AND BELOW PRINTS
-
     def evaluate_mef(self, targets=None):
         # Validate and generate targets if not provided
         targets = self._validate_and_generate_targets(targets)

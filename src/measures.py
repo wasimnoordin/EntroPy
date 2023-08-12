@@ -1,5 +1,3 @@
-# Equal to "quants.py" from FinQuant
-
 """ The module provides functions to compute quantities relevant to financial
 portfolios, e.g. a weighted average, which is the expected value/return, a
 weighted standard deviation (volatility), and the Sharpe ratio.
@@ -8,6 +6,8 @@ weighted standard deviation (volatility), and the Sharpe ratio.
 import pandas
 import numpy
 import scipy.stats
+
+from src.investment_performance import calculate_daily_return_proportioned
 
 def calculate_stratified_average(avg_asset_value, proportion_of_investment):
 
@@ -86,39 +86,6 @@ def calculate_sharpe_ratio(portfolio_return, portfolio_volatility, risk_free_ROR
     sharpe_ratio = excess_return / portfolio_volatility if portfolio_volatility else 'inf'
     return sharpe_ratio
 
-def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0.95):
-    """
-    Calculates the Value at Risk (VaR) of an a given asset.
-
-    Arguments:
-    - asset_total: Numeric, absolute value of all assets. 
-    - asset_average: Numeric, asset average return.
-    - asset_volatility: Numeric, asset standard deviation.
-    - confidence_lvl (optional): Numeric, confidence level for the VaR calculation. 
-                                Setpoint: 0.95, as used by JPM, GMS, and other IB/HF.
-
-    Returns:
-    - asset_VaR: Numeric, value at Risk of the asset.
-    """
-
-    # Check if inputs are numeric
-    if not all(isinstance(x, (int, float, numpy.number)) for x in [asset_total, asset_average, asset_volatility, confidence_lvl]):
-        raise TypeError("All inputs must be numeric.")
-    
-    # Check if conf_level is within range
-    if not 0 < confidence_lvl < 1:
-        raise ValueError("Confidence level should fall within the range of 0 to 1.")
-
-    # Calculate the inverse of the cumulative distribution function
-    inverse_cdf_VaR = scipy.stats.norm.ppf(1 - confidence_lvl)
-
-    # Calculate the difference between the mean return and the product of the standard deviation and the inverse cdf
-    diff_VaR = asset_average - asset_volatility * inverse_cdf_VaR
-
-    # Calculate Value at Risk by multiplying the investment with the difference
-    asset_VaR = asset_total * diff_VaR
-    return asset_VaR
-
 def calculate_annualisation_of_measures(proportion_of_investment, avg_asset_value, disp_matrix, risk_free_ROR=0.005427, regular_trading_days=252):
     """
     Calculates and returns the expected yearly return, volatility, and Sharpe Ratio of a portfolio.
@@ -163,3 +130,103 @@ def calculate_annualisation_of_measures(proportion_of_investment, avg_asset_valu
     # Return combined annualised output tuple
     annualised_measures = annualised_return, annualised_volatility, sharpe_ratio
     return annualised_measures
+
+def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0.95):
+    """
+    Calculates the Value at Risk (VaR) of an a given asset.
+
+    Arguments:
+    - asset_total: Numeric, absolute value of all assets. 
+    - asset_average: Numeric, asset average return.
+    - asset_volatility: Numeric, asset standard deviation.
+    - confidence_lvl (optional): Numeric, confidence level for the VaR calculation. 
+                                Setpoint: 0.95, as used by JPM, GMS, and other IB/HF.
+
+    Returns:
+    - asset_VaR: Numeric, value at Risk of the asset.
+    """
+
+    # Check if inputs are numeric
+    if not all(isinstance(x, (int, float, numpy.number)) for x in [asset_total, asset_average, asset_volatility, confidence_lvl]):
+        raise TypeError("All inputs must be numeric.")
+    
+    # Check if conf_level is within range
+    if not 0 < confidence_lvl < 1:
+        raise ValueError("Confidence level should fall within the range of 0 to 1.")
+
+    # Calculate the inverse of the cumulative distribution function
+    inverse_cdf_VaR = scipy.stats.norm.ppf(1 - confidence_lvl)
+
+    # Calculate the difference between the mean return and the product of the standard deviation and the inverse cdf
+    diff_VaR = asset_average - asset_volatility * inverse_cdf_VaR
+
+    # Calculate Value at Risk by multiplying the investment with the difference
+    asset_VaR = asset_total * diff_VaR
+    return asset_VaR
+
+def calculate_downside_risk(input_stock_prices: pandas.DataFrame, proportion, risk_free_ROR=0.005427) -> float:
+    try:
+        # Validate inputs
+        _validate_downside_input(input_stock_prices, pandas.DataFrame, "Data must be a Pandas DataFrame.")
+        _validate_downside_input(proportion, (pandas.Series, numpy.ndarray), "Weights must be a pandas Series or numpy ndarray.")
+        _validate_downside_input(risk_free_ROR, (int, float, numpy.integer, numpy.floating), "Risk-free rate must be an integer or float.")
+
+        # Compute weighted daily mean returns
+        wtd_daily_mean = calculate_daily_return_proportioned(input_stock_prices, proportion)
+
+        # Compute downside risk
+        downside_risk = _compute_downside_risk(wtd_daily_mean, risk_free_ROR)
+
+        return downside_risk
+    except Exception as e:
+        print(f"An error occurred while calculating downside risk: {str(e)}")
+        return None
+
+def _validate_downside_input(value, expected_type, error_message):
+    if not isinstance(value, expected_type):
+        raise ValueError(error_message)
+
+def _compute_downside_risk(wtd_daily_mean, risk_free_ROR):
+    # Calculate the differences between the weighted daily mean and the risk-free rate of return
+    differences = wtd_daily_mean - risk_free_ROR
+
+    # Identify the negative returns (returns below the risk-free rate)
+    negative_returns = numpy.minimum(0, differences)
+
+    # Square the negative returns
+    squared_negative_returns = negative_returns ** 2
+
+    # Calculate the mean of the squared negative returns
+    mean_squared_negative_returns = numpy.mean(squared_negative_returns)
+
+    # Calculate the square root of the mean of the squared negative returns
+    downside_risk = numpy.sqrt(mean_squared_negative_returns)
+
+    # Return the downside risk
+    return downside_risk
+
+def calculate_sortino_ratio(forecast_revenue, downside_risk, risk_free_ROR=0.005427):
+
+    try:
+        # Validate inputs
+        for value, name in zip([forecast_revenue, downside_risk, risk_free_ROR], ["exp_return", "downside_risk", "risk_free_ROR"]):
+            _validate_sortino_input(value, name)
+
+        # Check for zero downside risk
+        if downside_risk == 0:
+            return numpy.nan
+
+        # Calculate Sortino ratio
+        excess_return = forecast_revenue - risk_free_ROR
+        sortino_ratio = excess_return / downside_risk
+
+        return sortino_ratio
+    except Exception as e:
+        print(f"An error occurred while calculating the Sortino Ratio: {str(e)}")
+        return None
+    
+def _validate_sortino_input(value, name):
+    if not isinstance(value, (int, float, numpy.integer, numpy.floating)):
+        raise ValueError(f"{name} is expected to be an integer or float.")
+
+

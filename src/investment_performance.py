@@ -69,7 +69,7 @@ def calculate_daily_return(input_stock_prices):
     return daily_return
 
 
-def calculate_daily_return_weighted(input_stock_prices, allocation):
+def calculate_daily_return_proportioned(input_stock_prices, allocation):
 
     if not isinstance(input_stock_prices, pandas.DataFrame):
         raise TypeError("Input stock price must be a pandas DataFrame.")

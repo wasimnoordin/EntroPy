@@ -40,7 +40,7 @@ class MonteCarloSimulation:
         # Converting the list to a NumPy array with a specified data type
         return numpy.asarray(mcs_run_output, dtype=object)
 
-class MonteCarloOptimization(MonteCarloSimulation):
+class MonteCarloMethodology(MonteCarloSimulation):
     """A tool designed to execute Monte Carlo simulations to discover optimal financial portfolios.
     
     Parameters:
@@ -311,4 +311,3 @@ class MonteCarloOptimization(MonteCarloSimulation):
                 print_attribute(asset, allocation)
             print("=" * 50)
             print()
-
