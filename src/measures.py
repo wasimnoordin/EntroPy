@@ -131,9 +131,9 @@ def calculate_annualisation_of_measures(proportion_of_investment, avg_asset_valu
     annualised_measures = annualised_return, annualised_volatility, sharpe_ratio
     return annualised_measures
 
-def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0.95):
+def calculate_value_at_risk(asset_total, asset_average, asset_volatility, confidence_interval=0.95):
     """
-    Calculates the Value at Risk (VaR) of an a given asset.
+    Calculates the Value at Risk of an a given asset.
 
     Arguments:
     - asset_total: Numeric, absolute value of all assets. 
@@ -147,22 +147,22 @@ def calculate_VaR(asset_total, asset_average, asset_volatility, confidence_lvl=0
     """
 
     # Check if inputs are numeric
-    if not all(isinstance(x, (int, float, numpy.number)) for x in [asset_total, asset_average, asset_volatility, confidence_lvl]):
+    if not all(isinstance(x, (int, float, numpy.number)) for x in [asset_total, asset_average, asset_volatility, confidence_interval]):
         raise TypeError("All inputs must be numeric.")
     
     # Check if conf_level is within range
-    if not 0 < confidence_lvl < 1:
+    if not 0 < confidence_interval < 1:
         raise ValueError("Confidence level should fall within the range of 0 to 1.")
 
     # Calculate the inverse of the cumulative distribution function
-    inverse_cdf_VaR = scipy.stats.norm.ppf(1 - confidence_lvl)
+    inverse_cdf_value_at_risk = scipy.stats.norm.ppf(1 - confidence_interval)
 
     # Calculate the difference between the mean return and the product of the standard deviation and the inverse cdf
-    diff_VaR = asset_average - asset_volatility * inverse_cdf_VaR
+    diff_value_at_risk = asset_average - asset_volatility * inverse_cdf_value_at_risk
 
     # Calculate Value at Risk by multiplying the investment with the difference
-    asset_VaR = asset_total * diff_VaR
-    return asset_VaR
+    asset_value_at_risk = asset_total * diff_value_at_risk
+    return asset_value_at_risk
 
 def calculate_downside_risk(input_stock_prices: pandas.DataFrame, proportion, risk_free_ROR=0.005427) -> float:
     try:

@@ -9,8 +9,8 @@ class Stock(Investment):
     def __init__(self, stock_details: pandas.DataFrame, input_stock_prices: pandas.Series) -> None:
         self.investment_name = stock_details['Name'].iloc[0]
         self.stock_details = stock_details
-        self.beta_coefficient = None
         self.initialize_asset(input_stock_prices)
+        self.beta_coefficient = None
 
     def initialize_asset(self, input_stock_prices: pandas.Series):
         if not isinstance(input_stock_prices, pandas.Series):
