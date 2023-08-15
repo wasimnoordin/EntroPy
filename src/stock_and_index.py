@@ -7,7 +7,7 @@ from src.investment_item import Investment
 class Stock(Investment):
 
     def __init__(self, stock_details: pandas.DataFrame, input_stock_prices: pandas.Series) -> None:
-        self.investment_name = stock_details['Name'].iloc[0]
+        self.investment_name = stock_details['Name']
         self.stock_details = stock_details
         self.initialize_asset(input_stock_prices)
         self.beta_coefficient = None
@@ -89,7 +89,7 @@ class Index(Investment):
         # Call the parent class constructor
         super().__init__(price_history, investment_name=price_history.name, investment_category="Financial Index")
         # Compute index returns and store them
-        self.index_returns_per_day = self.compute_index_perday_returns()
+        self.calculate_daily_return = self.compute_index_perday_returns()
 
     def compute_index_perday_returns(self) -> pandas.Series:
         # Utilize the calculate_daily_returns function to compute the daily returns

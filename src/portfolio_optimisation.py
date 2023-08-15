@@ -31,12 +31,12 @@ class Portfolio_Optimised_Methods:
     def __init__(self):
         # DataFrames and Objects
         self.asset_price_history = pandas.DataFrame()
-        self.beta_stocks = pandas.DataFrame(index=["beta coefficient"])
+        self.beta_dataframe = pandas.DataFrame(index=["beta coefficient"])
         self.portfolio_distribution = pandas.DataFrame()
         self.stock_objects = {}
 
         # Return Metrics
-        self.average_return = None
+        self.pf_forecast_return = None
         self.sharpe_ratio = None
         self.sortino_ratio = None
 
@@ -50,7 +50,7 @@ class Portfolio_Optimised_Methods:
         # Beta Metrics
         self.beta_coefficient = None
 
-        # Capital and Allocation
+        # Capital allocation
         self.capital_allocation = None
 
         # Constants and Settings
@@ -181,7 +181,7 @@ class Portfolio_Optimised_Methods:
         self._update_portfolio_name()
 
         # Add stock data to the portfolio
-        self._add_stock_data(asset_stock)  
+        self._integrate_stock_data(asset_stock)  
 
         # Only if cascading changes are not suspended, perform them
         if suspension_changes == False:
@@ -217,4 +217,140 @@ class Portfolio_Optimised_Methods:
             join='outer'
         )
         return concatenated_portfolio
+    
+    def _integrate_stock_data(self, asset_stock: Stock) -> None:
+        """Integrate stock data into the portfolio object."""
+        
+        # Append the stock's data to the portfolio's DataFrame
+        self._append_stock_to_dataframe(asset_stock)
+        
+        # Adjust the DataFrame index to match the stock's index
+        self._adjust_dataframe_index(asset_stock)
+        
+        # If a financial index is available, calculate and store the stock's beta parameter
+        if self.financial_index:
+            self._store_stock_beta(asset_stock)
 
+    def _append_stock_to_dataframe(self, asset_stock: Stock) -> None:
+        """Appends the stock data to the portfolio DataFrame."""
+        
+        # Calculate the location to insert the stock data
+        insertion_location = len(self.asset_price_history.columns)
+        
+        # Get the investment name of the asset_stock
+        investment_name = asset_stock.investment_name
+        
+        # Get the asset_price_history data from the asset_stock
+        stock_data = asset_stock.asset_price_history
+        
+        # Insert the stock data into the portfolio's DataFrame
+        self.asset_price_history.insert(
+            loc=insertion_location, 
+            column=investment_name, 
+            value=stock_data,
+            allow_duplicates=False
+        )
+
+    def _adjust_dataframe_index(self, asset_stock: Stock) -> None:
+        """Ensures the DataFrame index is consistent and appropriately named."""
+        
+        # Set the DataFrame index to match the stock's index values
+        self.asset_price_history.set_index(
+            asset_stock.asset_price_history.index.values, 
+            append=False, 
+            inplace=True, 
+            verify_integrity=False
+        )
+        
+        # Rename the DataFrame index to "Period"
+        self.asset_price_history.index.rename(
+            "Period", 
+            axis=0, 
+            inplace=True, 
+            level=None
+        )
+
+    def _store_stock_beta(self, asset_stock: Stock) -> None:
+        """Calculates and stores the beta parameter for the given stock."""
+        
+        # Calculate the individual beta using the stock's data and financial index's daily returns
+        individual_beta = asset_stock.calculate_pf_beta_coefficient(self.financial_index.calculate_daily_return)
+        
+        # Create a list containing the individual beta value
+        beta_list = [individual_beta]
+        
+        # Store the list in the beta_dataframe with the investment name as the column
+        self.beta_dataframe[asset_stock.investment_name] = beta_list
+
+    def _cascade_changes(self):
+        if not self._valid_data_present():
+            return
+        
+        self._update_risk_metrics()
+        self._update_return_metrics()
+        self._update_beta_metrics()
+        self._update_capital_allocation()
+
+    def _valid_data_present(self) -> bool:
+        """
+        Check if necessary data is present to perform the update.
+        
+        Returns:
+        -- bool: True if valid data is present, False otherwise.
+        """
+        return not (self.portfolio_distribution.empty or not self.stock_objects or self.asset_price_history.empty)
+
+    def _update_risk_metrics(self):
+        """
+        Updates the risk metrics of the portfolio.
+        """
+        self.portfolio_volatility = self.calculate_pf_stock_volatility(regular_trading_days=self.regular_trading_days)
+        self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
+        self.value_at_risk = self.calculate_pf_value_at_risk()
+        self.portfolio_skewness = self.calculate_pf_portfolio_skewness()
+        self.portfolio_kurtosis = self.calculate_pf_portfolio_kurtosis()
+    
+    def _update_return_metrics(self):
+        """
+        Updates the return metrics of the portfolio.
+        """
+        self.pf_forecast_return = self.calculate_pf_forecast_return(regular_trading_days=self.regular_trading_days)
+        self.sharpe_ratio = self.calculate_pf_sharpe_ratio()
+        self.sortino_ratio = self.calculate_pf_sortino_ratio()
+
+    def _update_beta_metrics(self):
+        """
+        Updates the beta metrics of the portfolio.
+        """
+        if self.financial_index:
+            self.beta_coefficient = self.calculate_pf_beta_coefficient()
+
+    def _update_capital_allocation(self):
+        """
+        Updates the capital allocation of the portfolio.
+        """
+        self.capital_allocation = self.portfolio_distribution.Allocation.sum()
+
+    def extract_stock_object (self, investment_name):
+        try:
+            return self.stock_objects[investment_name]
+        except KeyError:
+            raise ValueError(f"No stock found with the name: {investment_name}")
+        
+
+    def calculate_pf_stock_volatility(self, regular_trading_days: int = 252) -> pandas.Series:
+  
+        if not isinstance(regular_trading_days, int):
+            raise TypeError(f"Expected 'regular_trading_days' to be an integer, but got {type(regular_trading_days).__name__}.")
+
+        if regular_trading_days <= 0:
+            raise ValueError("The 'regular_trading_days' should be a positive integer.")
+        
+        daily_returns = self.calculate_pf_daily_return()
+        daily_volatilities = daily_returns.std()
+        pf_stock_volatility = daily_volatilities * numpy.sqrt(regular_trading_days)
+        
+        return pf_stock_volatility
+    
+    def calculate_pf_daily_return(self):
+        return calculate_daily_return(self.asset_price_history)
