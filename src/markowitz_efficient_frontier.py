@@ -321,8 +321,9 @@ class EfficientFrontierOptimization:
 
 class EfficientFrontierVisualization:
 
-    def __init__(self, initialization):
+    def __init__(self, initialization, optimization):
         self.initialization = initialization
+        self.optimization = optimization
 
     def plot_optimal_mef_points(self):
         # Check if the efficient frontier has been calculated; if not, calculate it
@@ -376,7 +377,7 @@ class EfficientFrontierVisualization:
         # Add a grid for better readability
         pylab.grid(True, linestyle='--', alpha=0.5)
 
-        # Optionally, you can change the size of the plot
+        # Optionally, change the size of the plot
         pylab.gcf().set_size_inches(10, 6)
 
         # Show the plot

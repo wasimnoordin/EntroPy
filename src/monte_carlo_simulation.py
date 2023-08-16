@@ -61,7 +61,7 @@ class MonteCarloMethodology(MonteCarloSimulation):
     def __init__(
         self,
         asset_revenue,
-        mcs_iterations=5000,
+        mcs_iterations=999,
         risk_free_ROR=0.005427,
         regular_trading_days=252,
         seed_allocation=None,

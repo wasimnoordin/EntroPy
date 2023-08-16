@@ -153,7 +153,7 @@ class Portfolio_Optimised_Methods:
         self.__financial_index = index
 
     @confidence_interval_value_at_risk.setter
-    def var_confidence_level(self, attribute: float) -> None:
+    def confidence_interval_value_at_risk(self, attribute: float) -> None:
         self.__validate_confidence_level_value_at_risk(attribute)
         self.__confidence_interval_value_at_risk = attribute
         # now that this changed, update VaR
@@ -196,11 +196,11 @@ class Portfolio_Optimised_Methods:
         stock_info = self._get_stock_info(asset_stock)
         
         # Append stock info to the portfolio
-        self.portfolio = self._append_stock_info(stock_info)
+        self.portfolio_distribution = self._append_stock_info(stock_info)
 
     def _update_portfolio_name(self) -> None:
         # Set a descriptive portfolio name
-        self.portfolio.investment_name = "Diversified Investment Portfolio"
+        self.portfolio_distribution.investment_name = "Diversified Investment Portfolio"
 
     def _get_stock_info(self, asset_stock: Stock) -> pandas.DataFrame:
         # Get stock information DataFrame and transpose
@@ -211,7 +211,7 @@ class Portfolio_Optimised_Methods:
     def _append_stock_info(self, stock_info_transposed: pandas.DataFrame) -> pandas.DataFrame:
         # Append stock info to the portfolio DataFrame
         concatenated_portfolio = pandas.concat(
-            objs=[self.portfolio, stock_info_transposed],
+            objs=[self.portfolio_distribution, stock_info_transposed],
             axis=0,
             ignore_index=True,
             join='outer'
@@ -304,7 +304,7 @@ class Portfolio_Optimised_Methods:
         """
         Updates the risk metrics of the portfolio.
         """
-        self.portfolio_volatility = self.calculate_pf_stock_volatility(regular_trading_days=self.regular_trading_days)
+        self.portfolio_volatility = self.calculate_pf_volatility(regular_trading_days=self.regular_trading_days)
         self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
         self.value_at_risk = self.calculate_pf_value_at_risk()
         self.portfolio_skewness = self.calculate_pf_portfolio_skewness()
@@ -337,7 +337,138 @@ class Portfolio_Optimised_Methods:
         except KeyError:
             raise ValueError(f"No stock found with the name: {investment_name}")
         
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RISK ~~~~~~~~~~~~~~~~~~~~~~
 
+    def calculate_pf_value_at_risk(self) -> float:
+
+        # Calculate Value at Risk for the portfolio based on its total investment, expected return, volatility, and confidence level
+        pf_value_at_risk = calculate_value_at_risk(
+            asset_total=self.capital_allocation, 
+            asset_average=self.pf_forecast_return, 
+            asset_volatility=self.portfolio_volatility, 
+            confidence_interval=self.confidence_interval_value_at_risk
+        )
+
+        # Store the calculated Value at Risk as an instance variable
+        self.value_at_risk = pf_value_at_risk
+        
+        return pf_value_at_risk
+    
+    def calculate_pf_downside_risk(self, regular_trading_days: int = 252) -> float:
+
+        # Validate input: Ensure it's a positive integer
+        if not isinstance(regular_trading_days, int) or regular_trading_days <= 0:
+            raise ValueError("regular_trading_days should be a positive integer.")
+        
+        # Compute the raw downside risk of the portfolio
+        raw_downside_risk = calculate_downside_risk(
+            self.asset_price_history, 
+            self.calculate_pf_proportioned_allocation(), 
+            self.risk_free_ROR
+        )
+        
+        # Annualize the downside risk
+        pf_downside_risk = raw_downside_risk * numpy.sqrt(regular_trading_days)
+        
+        # Store the calculated downside risk as an instance variable
+        self.downside_risk = pf_downside_risk
+        
+        return pf_downside_risk
+
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RETURN ~~~~~~~~~~~~~~~~~~~~~~
+    
+    def calculate_pf_daily_return(self):
+        return calculate_daily_return(self.asset_price_history)
+    
+    def calculate_pf_cumulative_return(self):
+        return calculate_cumulative_return(self.asset_price_history)
+    
+    def calculate_pf_daily_return_logarithmic(self):
+        return calculate_daily_return_logarithmic(self.asset_price_history)
+    
+    def calculate_pf_historical_avg_return(self, regular_trading_days = 252):
+        return calculate_historical_avg_return(self.asset_price_history, regular_trading_days=regular_trading_days)
+    
+    def calculate_pf_forecast_return(self, regular_trading_days: int = 252) -> float:
+
+        # Validate input
+        if not isinstance(regular_trading_days, int):
+            raise TypeError(f"Expected 'regular_trading_days' to be an integer, but got {type(regular_trading_days).__name__}.")
+        if regular_trading_days <= 0:
+            raise ValueError("'regular_trading_days' should be a positive integer.")
+        
+        # Compute portfolio return means based on historical data
+        portfolio_historical_return = calculate_historical_avg_return(self.asset_price_history, regular_trading_days=regular_trading_days)
+
+        # Compute portfolio weights
+        portfolio_proportions = self.calculate_pf_proportioned_allocation()
+
+        # Calculate the expected return
+        portfolio_forecast_return = calculate_stratified_average(portfolio_historical_return.values, portfolio_proportions)
+
+        # Assign to instance variable
+        self.pf_forecast_return = portfolio_forecast_return
+        
+        return portfolio_forecast_return
+
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: BETA & DISPERSION ~~~~~~~~~~~~~~~~~~~~~~
+    
+    def calculate_pf_beta_coefficient(self) -> float:
+        
+        # Determine portfolio allocations
+        portfolio_proportions = self.calculate_pf_proportioned_allocation()
+        
+        # Calculate the weighted mean of the Beta values of the stocks in the portfolio
+        beta_values = self.beta_dataframe.transpose()["beta"].values
+        pf_beta_coefficient = calculate_stratified_average(beta_values, portfolio_proportions)
+        
+        # Store the calculated Beta as an instance variable
+        self.beta_coefficient = pf_beta_coefficient
+        
+        return pf_beta_coefficient
+    
+    def calculate_pf_dispersion_matrix(self) -> pandas.DataFrame:
+        # Compute daily returns of the asset price history
+        asset_daily_return = calculate_daily_return(self.asset_price_history)
+        
+        # Compute and return the dispersion matrix for the daily returns
+        portfolio_dispersion_matrix = asset_daily_return.cov
+
+        return portfolio_dispersion_matrix
+
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: SHAPE ~~~~~~~~~~~~~~~~~~~~~~
+    
+    def calculate_pf_portfolio_skewness(self) -> pandas.Series:
+        """
+        Calculates the skewness of the stocks in the portfolio.
+        
+        Skewness measures the asymmetry of the probability distribution 
+        of a real-valued random variable about its mean. A positive skewness 
+        indicates a distribution that is skewed towards the right, while a 
+        negative skewness indicates a distribution that is skewed to the left.
+
+        Returns:
+        - pandas.Series: The skewness values of each stock in the portfolio.
+        """
+        pf_portfolio_skewness = self.asset_price_history.skew()  # Compute skewness for each stock in the portfolio
+        return pf_portfolio_skewness
+
+    def calculate_pf_portfolio_kurtosis(self) -> pandas.Series:
+        """
+        Calculates the kurtosis of the stocks in the portfolio.
+        
+        Kurtosis measures the "tailedness" of the probability distribution 
+        of a real-valued random variable. High kurtosis indicates a high 
+        peak and fat tails, whereas low kurtosis indicates a low peak and 
+        thin tails. 
+
+        Returns:
+        - pandas.Series: The kurtosis values of each stock in the portfolio.
+        """
+        pf_portfolio_kurtosis = self.asset_price_history.kurt()  # Compute kurtosis for each stock in the portfolio
+        return pf_portfolio_kurtosis
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: VOLATILITY ~~~~~~~~~~~~~~~~~~~~~~
+    
     def calculate_pf_stock_volatility(self, regular_trading_days: int = 252) -> pandas.Series:
   
         if not isinstance(regular_trading_days, int):
@@ -352,5 +483,168 @@ class Portfolio_Optimised_Methods:
         
         return pf_stock_volatility
     
-    def calculate_pf_daily_return(self):
-        return calculate_daily_return(self.asset_price_history)
+    def calculate_pf_volatility(self, regular_trading_days: int = 252) -> float:
+        
+        # Validate the input: Ensure it's a positive integer
+        if not isinstance(regular_trading_days, int) or regular_trading_days <= 0:
+            raise ValueError("regular_trading_days should be a positive integer.")
+        
+        # Compute dispersion matrix of the portfolio
+        portfolio_dispersion = self.calculate_pf_dispersion_matrix()
+        
+        # Determine portfolio allocations
+        portfolio_proportions = self.calculate_pf_proportioned_allocation()
+
+        # Calculate the raw portfolio's volatility
+        raw_portfolio_volatility = calculate_portfolio_volatility(portfolio_dispersion, portfolio_proportions)
+        
+        # Annualize the portfolio volatility
+        annualized_portfolio_volatility = raw_portfolio_volatility * numpy.sqrt(regular_trading_days)
+        
+        # Store the calculated volatility as an instance variable
+        self.portfolio_volatility = annualized_portfolio_volatility
+        
+        return annualized_portfolio_volatility
+
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: CAPITAL ALLOCATION & PROPORTIONMENT ~~~~~~~~~~~~~~~~~~~~~~ 
+    
+    def calculate_pf_proportioned_allocation(self):
+        pf_allocation = self.portfolio_distribution["Allocation"]
+        total_allocation = self.capital_allocation
+        proportioned_allocation = pf_allocation / total_allocation
+        return proportioned_allocation
+
+    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: PERFORMANCE ~~~~~~~~~~~~~~~~~~~~~~
+    
+    def calculate_pf_sharpe_ratio(self) -> float:
+
+        # Compute the Sharpe Ratio of the portfolio based on its forecast return, volatility, and risk-free rate of return
+        pf_sharpe_ratio = calculate_sharpe_ratio(
+            self.pf_forecast_return, 
+            self.portfolio_volatility, 
+            self.risk_free_ROR
+        )
+        
+        # Store the calculated Sharpe Ratio as an instance variable
+        self.sharpe_ratio = pf_sharpe_ratio
+        
+        return pf_sharpe_ratio
+    
+    def calculate_pf_sortino_ratio(self) -> float:
+        # Calculate Sortino Ratio using the forecast return, downside risk, and risk-free rate of return
+        pf_sortino_ratio = calculate_sortino_ratio(
+            forecast_revenue=self.pf_forecast_return, 
+            downside_risk=self.downside_risk, 
+            risk_free_ROR=self.risk_free_ROR
+        )
+
+        return pf_sortino_ratio
+    
+    # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MONTE CARLO SIMULATION ~~~~~~~~~~~~~~~~~~~~~~
+    def initialise_mcs_instance(self, mcs_iterations=999):
+        """
+        Returns an instance of the MonteCarloMethodology class. If the instance doesn't exist, 
+        it initializes and returns a new one.
+        """
+        if self.monte_carlo_instance is None:
+            self.monte_carlo_instance = MonteCarloMethodology(
+                self.calculate_pf_daily_return(),
+                mcs_iterations=mcs_iterations,
+                risk_free_ROR=self.risk_free_ROR,
+                regular_trading_days=self.regular_trading_days,
+                initial_weights=self.calculate_pf_proportioned_allocation().values,
+            )
+        return self.monte_carlo_instance
+    
+    def pf_mcs_optimisation(self, mcs_iterations=999):
+ 
+        # Reset Monte Carlo instance for a fresh optimization
+        self.monte_carlo_instance = None
+
+        # Retrieve or initialize the MonteCarloOpt instance
+        if not self.monte_carlo_instance:
+            monte_carlo_instance = self.initialise_mcs_instance(mcs_iterations)
+            optimal_prop, optimal_prod = monte_carlo_instance.mcs_optimised_portfolio()
+            return optimal_prop, optimal_prod
+
+# FINISH OFF MCS
+
+
+      
+    # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MARKOWITZ EFFICIENT FRONTIER ~~~~~~~~~~~~~~~~~~~~~~
+
+    def initialise_mef_instance(self) -> EfficientFrontierMaster:
+
+        if not hasattr(self, "efficient_frontier_instance") or self.efficient_frontier_instance is None:
+            self.efficient_frontier_instance = EfficientFrontierMaster(
+                self.calculate_pf_historical_avg_return(regular_trading_days=1),
+                self.calculate_pf_dispersion_matrix(),
+                risk_free_ROR=self.risk_free_ROR,
+                regular_trading_days=self.regular_trading_days,
+            )
+        return self.efficient_frontier_instance
+    
+    def optimize_pf_mef_volatility_minimisation(self, show_details: bool = False) -> pandas.DataFrame:
+
+        # Retrieve or create an instance of EfficientFrontier
+        mef_instance = self.initialise_mef_instance()
+        
+        # Execute the optimization for volatility minimisation
+        optimized_proportions = mef_instance.mef_volatility_minimisation()
+        
+        # If verbose flag is set, display the properties of the efficient frontier optimization
+        if show_details:
+            mef_instance.mef_metrics(show_details=show_details)
+        
+        return optimized_proportions
+
+    def optimize_pf_mef_sharpe_maximisation(self, show_details: bool = False) -> pandas.DataFrame:
+
+        mef_instance = self.initialise_mef_instance()
+
+        optimized_mef_proportions = mef_instance.mef_sharpe_maximisation()
+
+        if show_details:
+            mef_instance.mef_metrics(show_details=show_details)
+
+        return optimized_mef_proportions
+    
+    def optimize_pf_mef_return(self, target_return, show_details=False) -> pandas.DataFrame:
+
+        mef_instance = self.initialise_mef_instance()
+        optimal_mef_proportions = mef_instance.mef_return(target_return)
+
+        if show_details:
+            mef_instance.mef_metrics(show_details=show_details)
+
+        return optimal_mef_proportions
+    
+    def optimize_pf_mef_volatility(self, target_return, show_details=False) -> pandas.DataFrame:
+
+        mef_instance = self.initialise_mef_instance()
+        optimal_mef_proportions = mef_instance.mef_volatility(target_return)
+
+        if show_details:
+            mef_instance.mef_metrics(show_details=show_details)
+
+        return optimal_mef_proportions
+
+    def optimize_pf_mef_efficient_frontier(self, target_return=None) -> numpy.ndarray:
+
+        mef_instance = self.initialise_mef_instance()
+        frontier_data = mef_instance.efficient_frontier(target_return)
+        return frontier_data
+    
+    def optimize_pf_plot_mef(self):
+            
+            mef_instance = self.initialise_mef_instance()
+            mef_instance.plot_optimal_mef_points()
+
+    def optimize_pf_plot_vol_and_sharpe_optimal(self):
+
+        mef_instance = self.initialise_mef_instance()
+        mef_instance.plot_vol_and_sharpe_optimal()
+
+        
+
+    
