@@ -443,27 +443,27 @@ class EfficientFrontierVisualization:
 
     def _print_mef_metrics(self, annualised_return, annualised_volatility, sharpe_ratio):
         # Create a formatted string with the portfolio properties
-        string = "=" * 50  # Use '=' as separator
-        string += f"\nOptimised Portfolio for {self.initialization.prec_opt}\n"
-        string += "-" * 50  # Use '-' to separate sections
-        string += f"\nEpoch/Trading Days: {self.initialization.regular_trading_days}"
-        string += f"\nRisk-Free Rate of Return: {self.initialization.risk_free_ROR:.2%}"  # Display as percentage
-        string += f"\nPredicted Annualised Return: {annualised_return:.3%}"  # Display as percentage
-        string += f"\nAnnualised Volatility: {annualised_volatility:.3%}"  # Display as percentage
-        string += f"\nSharpe Ratio: {sharpe_ratio:.4f}\n"
-        string += "-" * 50  # Use '-' to separate sections
+        stats = "=" * 50  # Use '=' as separator
+        stats += f"\nOptimised Portfolio for {self.initialization.prec_opt}\n"
+        stats += "-" * 50  # Use '-' to separate sections
+        stats += f"\nEpoch/Trading Days: {self.initialization.regular_trading_days}"
+        stats += f"\nRisk-Free Rate of Return: {self.initialization.risk_free_ROR:.2%}"  # Display as percentage
+        stats += f"\nPredicted Annualised Return: {annualised_return:.3%}"  # Display as percentage
+        stats += f"\nAnnualised Volatility: {annualised_volatility:.3%}"  # Display as percentage
+        stats += f"\nSharpe Ratio: {sharpe_ratio:.4f}\n"
+        stats += "-" * 50  # Use '-' to separate sections
 
-        string += "\nMost favourable Allocation:"
+        stats += "\nMost favourable Allocation:"
         # Get the asset allocation DataFrame
         asset_allocation_df = self._asset_allocation_dframe(self.initialization.asset_allocation_dataframe)
         # Transpose the DataFrame for better presentation
         transposed_allocation = asset_allocation_df.transpose()
         # Convert to string and add to the existing string with line breaks
-        string += f"\n{str(transposed_allocation)}\n"
-        string += "=" * 50  # Use '=' as a separator
+        stats += f"\n{str(transposed_allocation)}\n"
+        stats += "=" * 50  # Use '=' as a separator
 
         # Print the formatted string
-        print(string)
+        print(stats)
 
     
 class EfficientFrontierMaster:

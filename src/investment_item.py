@@ -83,7 +83,7 @@ class Investment:
         skewness_info = f"| {'Investment Skew':<40}| {self.investment_skew:<60.4f}|"
         kurtosis_info = f"| {'Investment Kurtosis/Tailedness':<40}| {self.investment_kurtosis:<60.4f}|"
 
-        properties_string = (
+        attributes_str = (
             f"{separator}\n"
             f"{header}\n"
             f"{separator}\n"
@@ -95,4 +95,8 @@ class Investment:
             f"{separator}"
         )
 
-        print(properties_string)
+        print(attributes_str)
+
+    def __str__(self) -> str:
+        """String representation of the Investment object."""
+        return f"{self.investment_category}: {self.investment_name} with Forecast Return of {self.forecast_investment_return:.4f} and Annualised Volatility of {self.annualised_investment_volatility:.4f}"

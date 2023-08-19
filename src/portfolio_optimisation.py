@@ -1,9 +1,10 @@
 import numpy
 import pandas
 from typing import Union 
-import matplotlib.pylab
+import matplotlib.pylab as pylab
+import datetime
 
-from src.investment_item import Investment
+from src.investment_item import Investment #NOT NEEDED?
 from src.investment_performance import (
     calculate_cumulative_return,
     calculate_daily_return,
@@ -185,7 +186,7 @@ class Portfolio_Optimised_Methods:
 
         # Only if cascading changes are not suspended, perform them
         if suspension_changes == False:
-            self.cascade_changes()
+            self._cascade_changes()
 
     def _update_stocks(self, asset_stock: Stock) -> None:
         # Update stock_objects dictionary
@@ -556,20 +557,26 @@ class Portfolio_Optimised_Methods:
             )
         return self.monte_carlo_instance
     
-    def pf_mcs_optimisation(self, mcs_iterations=999):
+    def pf_mcs_optimised_portfolio(self, mcs_iterations=999):
  
         # Reset Monte Carlo instance for a fresh optimization
         self.monte_carlo_instance = None
 
-        # Retrieve or initialize the MonteCarloOpt instance
+        # Retrieve or initialize the Monte Carlo instance
         if not self.monte_carlo_instance:
             monte_carlo_instance = self.initialise_mcs_instance(mcs_iterations)
             optimal_prop, optimal_prod = monte_carlo_instance.mcs_optimised_portfolio()
             return optimal_prop, optimal_prod
 
-# FINISH OFF MCS
+    def pf_mcs_visualisation(self):
+        """Delegate plotting results to the MonteCarloMethodology instance."""
+        monte_carlo_instance = self.initialise_mcs_instance()
+        monte_carlo_instance.mcs_visualisation()
 
-
+    def pf_mcs_print_attributes(self):
+        """Retrieve properties from the MonteCarloMethodology instance."""
+        monte_carlo_instance = self.initialise_mcs_instance()
+        monte_carlo_instance.mcs_print_attributes()
       
     # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MARKOWITZ EFFICIENT FRONTIER ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -592,7 +599,7 @@ class Portfolio_Optimised_Methods:
         # Execute the optimization for volatility minimisation
         optimized_proportions = mef_instance.mef_volatility_minimisation()
         
-        # If verbose flag is set, display the properties of the efficient frontier optimization
+        # If show_details flag is set, display the properties of the efficient frontier optimization
         if show_details:
             mef_instance.mef_metrics(show_details=show_details)
         
@@ -645,6 +652,98 @@ class Portfolio_Optimised_Methods:
         mef_instance = self.initialise_mef_instance()
         mef_instance.plot_vol_and_sharpe_optimal()
 
+# ~~~~~~~~~~~~~~~~~~~~~~ PF VISUALISATIONS & REPORTING ~~~~~~~~~~~~~~~~~~~~~~
+
+    def pf_stock_visualisation(self, regular_trading_days=252):
+        # annual mean returns of all stocks
+        asset_returns = self.calculate_pf_historical_avg_return(regular_trading_days=regular_trading_days)
+        asset_volatility = self.calculate_pf_stock_volatility(regular_trading_days=regular_trading_days)
         
+        # Adjusting the size of the plot for better visualization
+        pylab.figure(figsize=(10, 6))
+
+        # Plotting the data with enhanced styling
+        pylab.scatter(asset_volatility, asset_returns, marker="8", s=120, color='magenta', edgecolor='black', alpha=0.75)
+
+        # Adding gridlines for better clarity
+        pylab.grid(True, linestyle='--', alpha=0.75)
+
+        # Annotating the stocks on the scatter plot
+        for x, annot_id in enumerate(asset_returns.index, start=0):
+            pylab.annotate(
+                annot_id,
+                (asset_volatility[x], asset_returns[x]),
+                xytext=(0, 8),
+                textcoords="offset points",
+                label=x,
+                arrowprops=None,
+                annotation_clip=None,
+            )
+
+        # Setting axis labels and a title
+        pylab.xlabel('Stock Volatility')
+        pylab.ylabel('Annualised Returns')
+        pylab.title('Annualised Stock Returns vs. Volatility')
+
+        # Adjusting x and y axis limits
+        pylab.xlim([asset_volatility.min() - 0.01, asset_volatility.max() + 0.01])
+        pylab.ylim([asset_returns.min() - 0.01, asset_returns.max() + 0.01])
+    
+    def pf_print_portfolio_attributes(self):
+        header = self._format_header("Portfolio Attributes")
+        stock_info = self._get_stock_info()
+        stats = self._get_portfolio_stats()
+        skewness = self._get_skewness()
+        kurtosis = self._get_kurtosis()
+        info = self._get_information()
+        
+        output = f"\n{header}\n\n{stock_info}\n\n{stats}\n\n{skewness}\n\n{kurtosis}\n\n{info}\n{'=' * 70}\n"
+        print(output)
+
+    def _format_header(self, header_text):
+        return "📊 " + "=" * 100 + "\n" + header_text.center(100) + "\n" + "=" * 100
+
+    def _get_stock_info(self):
+        stock_id = self.portfolio_distribution.Name.values.tolist()
+        info = f"📈 Stocks: {', '.join(stock_id)}"
+        if self.financial_index is not None:
+            info += f"\n🌐 Financial Index: {self.financial_index.investment_name}"
+        return info + "\n" + "-" * 100
+
+    def _get_portfolio_stats(self):
+        stats = f"📈 Forecast Return: {self.pf_forecast_return:0.3f}"
+        stats += f"\n🎢 Portfolio Volatility: {self.portfolio_volatility:0.3f}"
+        stats += f"\n🚀 Sharpe Ratio: {self.sharpe_ratio:0.3f}"
+        stats += f"\n🌪️ Sortino Ratio: {self.sortino_ratio:0.3f}"
+        stats += f"\n📉 Downside Risk: {self.downside_risk:0.4f}"
+        stats += f"\n❗ Value at Risk: {self.value_at_risk:0.4f}"
+        stats += f"\n🔒 Confidence Interval (Value at Risk): {self.confidence_interval_value_at_risk * 100:0.3f} %"
+        if self.beta_coefficient is not None:
+            stats += f"\n🔄 Beta Coefficient: {self.beta_coefficient:0.3f}"
+        stats += f"\n📅 Trading Horizon: {self.regular_trading_days}"
+        stats += f"\n💰 Risk Free Rate of Return: {self.risk_free_ROR:.2%}"
+        return stats + "\n" + "*" * 100
+
+    def _get_skewness(self):
+        return "🔄 Skewness:\n" + str(self.portfolio_skewness.to_frame().transpose()) + "\n" + "*" * 100
+
+    def _get_kurtosis(self):
+        return "📊 Kurtosis:\n" + str(self.portfolio_kurtosis.to_frame().transpose()) + "\n" + "*" * 100
+
+    def _get_information(self):
+        self.portfolio_distribution = self.portfolio_distribution.rename(columns={
+            'Name': 'Stock Symbol',
+            'Weight': 'Allocation',
+            'Expected Return': 'Forecasted Return',
+            'Volatility': 'Volatility'
+             })
+        return "ℹ️ Information:\n" + str(self.portfolio_distribution) + "\n" + "=" * 100
+
+    def __str__(self):
+        stock_id = ', '.join(self.portfolio_distribution.Name.values.tolist())
+        return f"Portfolio containing information about stocks: {stock_id}"
+
+# ~~~~~~~~~~~~~~~~~~~~~~ PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
+
 
     

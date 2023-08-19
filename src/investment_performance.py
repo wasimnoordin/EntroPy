@@ -61,10 +61,10 @@ def calculate_daily_return(input_stock_prices):
     
     # Replace infinite valeus with NaN
     daily_return = daily_return.replace([numpy.inf, -numpy.inf], 
-                                        numpy.nan, 
-                                        inplace=False, 
-                                        limit=None
-                                        )
+    numpy.nan, 
+    inplace=False, 
+    limit=None
+    )
 
     return daily_return
 
