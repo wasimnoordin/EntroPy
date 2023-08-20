@@ -745,5 +745,149 @@ class Portfolio_Optimised_Methods:
 
 # ~~~~~~~~~~~~~~~~~~~~~~ PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
 
+# ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
+def yfinance_api_invocation(stock_symbols, from_date=None, to_date=None):  
 
+    # Convert string dates to datetime objects if needed
+    if isinstance(from_date, str):
+        from_date = _str_to_datetime(from_date)  
     
+    if isinstance(to_date, str):
+        to_date = _str_to_datetime(to_date)  
+    
+    # Retrieve the stock data
+    stock_data = _fetch_yfinance_data(stock_symbols, from_date, to_date)  
+
+    # Adjust the dataframe columns
+    formatted_stock_data = _adjust_dataframe_cols(stock_data, stock_symbols)  
+
+    return formatted_stock_data
+
+# Function to convert a date string to a datetime object
+def _str_to_datetime(date_input): 
+    try:
+        return datetime.datetime.strptime(date_input, "%Y-%m-%d") 
+    except ValueError:
+        raise ValueError(f"Incorrect date format for {date_input}. Expected format: YYYY-MM-DD.")  
+
+# Fetches the stock data from yfinance
+def _fetch_yfinance_data(stock_symbols, from_date, to_date): 
+    try:
+        import yfinance
+        return yfinance.download(stock_symbols, start=from_date, end=to_date)  
+    except ImportError:
+        raise ImportError(
+            "Please ensure that the package YFinance is installed, as it is prerequisited."
+        )
+    except Exception as download_error:
+        raise Exception(
+            "An error occurred while fetching stock data from Yahoo Finance via yfinance."
+        ) from download_error
+
+# Adjusts the dataframe columns based on the stock names
+def _adjust_dataframe_cols(stock_dataframe, stock_symbols):  
+    if len(stock_symbols) > 0 and not isinstance(stock_dataframe.columns, pandas.MultiIndex):
+        mindex_col = [(col, stock_symbols[0]) for col in list(stock_dataframe.columns)] 
+        stock_dataframe.columns = pandas.MultiIndex.from_tuples(mindex_col, sortorder=None)  
+    return stock_dataframe
+
+# ~~~~~~~~~~~ Stock Data Column Adjustment Module ~~~~~~~~~~~ (Rnme)
+
+def _determine_column_name(stock_data, symbol, column_labels, primary_column_names):
+    for col in column_labels:
+        if symbol in stock_data.columns:
+            return symbol
+        elif isinstance(stock_data.columns, pandas.MultiIndex):
+            col = col.replace(".", "")
+            if col in stock_data.columns:
+                if col not in primary_column_names:
+                    primary_column_names.append(col)
+                if symbol in stock_data[col].columns:
+                    return symbol
+                else:
+                    raise ValueError(
+                        "Could not find column labels in second level of MultiIndex pd.DataFrame"
+                    )
+    raise ValueError("Could not find column labels in the given dataframe.")
+
+def _format_data_columns(stock_data, required_column_names, primary_column_names):
+    if isinstance(stock_data.columns, pandas.MultiIndex):
+        if len(primary_column_names) != 1:
+            raise ValueError("Only one value/quantity per Stock is supported.")
+        return stock_data[primary_column_names[0]].loc[:, required_column_names]
+    else:
+        return stock_data.loc[:, required_column_names]
+
+def _get_stocks_data_columns(stock_data, stock_symbols, column_labels):
+    required_column_names = []
+    primary_column_names = []
+
+    for i in range(len(stock_symbols)):
+        colname = _determine_column_name(stock_data, stock_symbols[i], column_labels, primary_column_names)
+        required_column_names.append(colname)
+
+    stock_data = _format_data_columns(stock_data, required_column_names, primary_column_names)
+
+    # if only one data column per stock exists, rename column labels
+    # to the name of the corresponding stock
+    renamed_column_mapping = {}
+    if len(column_labels) == 1:
+        for i, symbol in enumerate(stock_symbols):
+            renamed_column_mapping.update({(symbol, column_labels[0]): symbol})
+        stock_data.rename(columns=renamed_column_mapping, inplace=True)
+
+    return stock_data
+
+
+# API-Driven Portfolio Construction with YFinance Support and Dynamic Allocation Management
+
+def _fetch_stock_data_from_api(stock_symbols, start, end, api_type):
+    if api_type == "yfinance":
+        return yfinance_api_invocation(stock_symbols, from_date=start, to_date=end)
+    else:
+        raise ValueError(f"Unsupported data API: {api_type}")
+
+def _fetch_market_data(market_symbol, start, end, api_type):
+    if market_symbol:
+        return _fetch_stock_data_from_api([market_symbol], start, end, api_type)
+    else:
+        return pandas.DataFrame()
+
+def _get_portfolio_allocation(stock_symbols, allocation):
+    if allocation is None:
+        return _generate_pf_allocation(names=stock_symbols)
+    return allocation
+
+def _build_portfolio_from_api(
+    stock_symbols,
+    allocation=None,
+    start=None,
+    end=None,
+    api_type="yfinance",
+    market_symbol: str = None,
+):
+    portfolio = Portfolio_Optimised_Methods()
+    market_data = pandas.DataFrame()
+    
+    stock_data = _fetch_stock_data_from_api(stock_symbols, start, end, api_type)
+    market_data = _fetch_market_data(market_symbol, start, end, api_type)
+    final_allocation = _get_portfolio_allocation(stock_symbols, allocation)
+    
+    portfolio = _build_portfolio_from_df(stock_data, final_allocation, market_data=market_data)
+    return portfolio
+
+# Stock Data Verification and Adjusted Close Retrieval
+
+def _verify_stock_presence_in_datacol(stock_symbols, stock_dataframe):
+    symbols_present = any((symbol in column for symbol in stock_symbols for column in stock_dataframe.columns))
+    return symbols_present
+
+def _retrieve_adjusted_close_from_dataframe(stock_data: pandas.DataFrame) -> pandas.Series:
+
+    if "Adj Close" not in stock_data.columns:
+        raise ValueError("The provided dataframe does not have an 'Adj Close' column.")
+    
+    adjust_close_data = stock_data["Adj Close"].squeeze()
+    return adjust_close_data
+
+
