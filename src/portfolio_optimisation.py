@@ -1,6 +1,6 @@
 import numpy
 import pandas
-from typing import Union 
+from typing import Union, List
 import matplotlib.pylab as pylab
 import datetime
 
@@ -94,18 +94,17 @@ class Portfolio_Optimised_Methods:
  # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO SETTERS ~~~~~~~~~~~~~~~~~~~~~~
 
     @capital_allocation.setter
-    def capital_allocation(self, attribute: float) -> None:
+    def capital_allocation(self, attribute) -> None:
         """Sets the capital allocation after validating the input."""
-        self.__validate_capital_allocation(attribute)
-        self.__capital_allocation = attribute
+        if attribute is not None:
+            self._validate_capital_allocation(attribute)
+            self.__capital_allocation = attribute
 
-    def __validate_capital_allocation(self, attribute: float) -> None:
+    def _validate_capital_allocation(self, attribute: float) -> None:
         """Checks the validity of the capital allocation value, ensuring it is a positive number."""
-        if attribute is None:
-            return
 
         if not isinstance(attribute, (float, int, numpy.integer, numpy.floating)):
-            raise TypeError("The capital allocation must be specified as a number (float or integer).")
+            raise ValueError("The capital allocation must be specified as a number (float or integer).")
 
         if not attribute > 0:
             raise ValueError("The capital allocation for the portfolio must be a positive value.")
@@ -171,7 +170,7 @@ class Portfolio_Optimised_Methods:
         
     # ~~~~~~~~~~~~~~~~~~~~~~ STOCK MANAGEMENT ~~~~~~~~~~~~~~~~~~~~~~
     
-    def add_stock(self, asset_stock: Stock, suspension_changes=False) -> None:
+    def incorporate_stock(self, asset_stock: Stock, suspension_changes=False) -> None:
         # Update stocks dictionary
         self._update_stocks(asset_stock)
         
@@ -213,7 +212,6 @@ class Portfolio_Optimised_Methods:
         # Append stock info to the portfolio DataFrame
         concatenated_portfolio = pandas.concat(
             objs=[self.portfolio_distribution, stock_info_transposed],
-            axis=0,
             ignore_index=True,
             join='outer'
         )
@@ -266,9 +264,7 @@ class Portfolio_Optimised_Methods:
         # Rename the DataFrame index to "Period"
         self.asset_price_history.index.rename(
             "Period", 
-            axis=0, 
             inplace=True, 
-            level=None
         )
 
     def _store_stock_beta(self, asset_stock: Stock) -> None:
@@ -332,7 +328,7 @@ class Portfolio_Optimised_Methods:
         """
         self.capital_allocation = self.portfolio_distribution.Allocation.sum()
 
-    def extract_stock_object (self, investment_name):
+    def extract_stock_object(self, investment_name):
         try:
             return self.stock_objects[investment_name]
         except KeyError:
@@ -691,7 +687,7 @@ class Portfolio_Optimised_Methods:
     
     def pf_print_portfolio_attributes(self):
         header = self._format_header("Portfolio Attributes")
-        stock_info = self._get_stock_info()
+        stock_info = self._get_pf_stock_info()
         stats = self._get_portfolio_stats()
         skewness = self._get_skewness()
         kurtosis = self._get_kurtosis()
@@ -703,7 +699,7 @@ class Portfolio_Optimised_Methods:
     def _format_header(self, header_text):
         return "📊 " + "=" * 100 + "\n" + header_text.center(100) + "\n" + "=" * 100
 
-    def _get_stock_info(self):
+    def _get_pf_stock_info(self):
         stock_id = self.portfolio_distribution.Name.values.tolist()
         info = f"📈 Stocks: {', '.join(stock_id)}"
         if self.financial_index is not None:
@@ -746,6 +742,7 @@ class Portfolio_Optimised_Methods:
 # ~~~~~~~~~~~~~~~~~~~~~~ PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
 
 # ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
+
 def yfinance_api_invocation(stock_symbols, from_date=None, to_date=None):  
 
     # Convert string dates to datetime objects if needed
@@ -791,55 +788,72 @@ def _adjust_dataframe_cols(stock_dataframe, stock_symbols):
         stock_dataframe.columns = pandas.MultiIndex.from_tuples(mindex_col, sortorder=None)  
     return stock_dataframe
 
-# ~~~~~~~~~~~ Stock Data Column Adjustment Module ~~~~~~~~~~~ (Rnme)
+# ~~~~~~~~~~~ Stock Data Column Adjustment Module ~~~~~~~~~~~
 
-def _determine_column_name(stock_data, symbol, column_labels, primary_column_names):
-    for col in column_labels:
-        if symbol in stock_data.columns:
-            return symbol
-        elif isinstance(stock_data.columns, pandas.MultiIndex):
-            col = col.replace(".", "")
-            if col in stock_data.columns:
-                if col not in primary_column_names:
-                    primary_column_names.append(col)
-                if symbol in stock_data[col].columns:
-                    return symbol
+def _identify_appropriate_column(stock_quant, stock_symbol, potential_columns, primary_id):
+    for column in potential_columns:
+        if stock_symbol in stock_quant.columns:
+            return stock_symbol
+        elif isinstance(stock_quant.columns, pandas.MultiIndex):
+            column = column.replace(".", "")
+            if column in stock_quant.columns:
+                if column not in primary_id:
+                    primary_id.append(column)
+                if stock_symbol in stock_quant[column].columns:
+                    return stock_symbol
                 else:
                     raise ValueError(
-                        "Could not find column labels in second level of MultiIndex pd.DataFrame"
+                        "Column entries in the second level of the MultiIndex within the pandas DataFrame cannot be located."
                     )
-    raise ValueError("Could not find column labels in the given dataframe.")
+    raise ValueError("Column identifiers within the provided dataframe could not be located.")
 
-def _format_data_columns(stock_data, required_column_names, primary_column_names):
-    if isinstance(stock_data.columns, pandas.MultiIndex):
-        if len(primary_column_names) != 1:
-            raise ValueError("Only one value/quantity per Stock is supported.")
-        return stock_data[primary_column_names[0]].loc[:, required_column_names]
+def _format_data_columns(stock_quant, mandatory_column_fields, primary_col_id):
+    if isinstance(stock_quant.columns, pandas.MultiIndex):
+        if len(primary_col_id) != 1:
+            raise ValueError("Presently, the system accommodates only a singular value or quantity per stock.")
+        return stock_quant[primary_col_id[0]].loc[:, mandatory_column_fields]
     else:
-        return stock_data.loc[:, required_column_names]
+        return stock_quant.loc[:, mandatory_column_fields]
 
-def _get_stocks_data_columns(stock_data, stock_symbols, column_labels):
-    required_column_names = []
-    primary_column_names = []
+def _fetch_stock_columns(stock_quant, stock_symbols, column_id):
+    mandatory_column_fields = []
+    primary_col_id = []
 
     for i in range(len(stock_symbols)):
-        colname = _determine_column_name(stock_data, stock_symbols[i], column_labels, primary_column_names)
-        required_column_names.append(colname)
+        column_denomination = _identify_appropriate_column(stock_quant, stock_symbols[i], column_id, primary_col_id)
+        mandatory_column_fields.append(column_denomination)
 
-    stock_data = _format_data_columns(stock_data, required_column_names, primary_column_names)
+    stock_quant = _format_data_columns(stock_quant, mandatory_column_fields, primary_col_id)
 
     # if only one data column per stock exists, rename column labels
     # to the name of the corresponding stock
     renamed_column_mapping = {}
-    if len(column_labels) == 1:
+    if len(column_id) == 1:
         for i, symbol in enumerate(stock_symbols):
-            renamed_column_mapping.update({(symbol, column_labels[0]): symbol})
-        stock_data.rename(columns=renamed_column_mapping, inplace=True)
+            renamed_column_mapping.update({(symbol, column_id[0]): symbol})
+        stock_quant.rename(columns=renamed_column_mapping, inplace=True)
 
-    return stock_data
+    return stock_quant
 
+# ~~~~~~~~~~~ API-Driven Portfolio Construction with YFinance Support and Dynamic Allocation Management ~~~~~~~~~~~
 
-# API-Driven Portfolio Construction with YFinance Support and Dynamic Allocation Management
+def _portfolio_assembly_api(
+    stock_symbols,
+    apportionment=None,
+    start=None,
+    end=None,
+    api_type="yfinance",
+    index_symbol: str = None,
+):
+    pf_api_construct = Portfolio_Optimised_Methods()
+    index_data = pandas.DataFrame()
+    
+    stock_data = _fetch_stock_data_from_api(stock_symbols, start, end, api_type)
+    index_data = _fetch_index_data(index_symbol, start, end, api_type)
+    final_allocation = _get_portfolio_allocation(stock_symbols, apportionment)
+    
+    pf_api_construct = _portfolio_assembly_df(stock_data, final_allocation, index_data=index_data)
+    return pf_api_construct
 
 def _fetch_stock_data_from_api(stock_symbols, start, end, api_type):
     if api_type == "yfinance":
@@ -847,47 +861,255 @@ def _fetch_stock_data_from_api(stock_symbols, start, end, api_type):
     else:
         raise ValueError(f"Unsupported data API: {api_type}")
 
-def _fetch_market_data(market_symbol, start, end, api_type):
-    if market_symbol:
-        return _fetch_stock_data_from_api([market_symbol], start, end, api_type)
+def _fetch_index_data(index_symbol, start, end, api_type):
+    if index_symbol:
+        return _fetch_stock_data_from_api([index_symbol], start, end, api_type)
     else:
         return pandas.DataFrame()
 
-def _get_portfolio_allocation(stock_symbols, allocation):
-    if allocation is None:
-        return _generate_pf_allocation(names=stock_symbols)
-    return allocation
+def _get_portfolio_allocation(stock_symbols, apportionment):
+    if apportionment is None:
+        return _compose_pf_stock_apportionment(column_title=stock_symbols)
+    return apportionment
 
-def _build_portfolio_from_api(
-    stock_symbols,
-    allocation=None,
-    start=None,
-    end=None,
-    api_type="yfinance",
-    market_symbol: str = None,
-):
-    portfolio = Portfolio_Optimised_Methods()
-    market_data = pandas.DataFrame()
-    
-    stock_data = _fetch_stock_data_from_api(stock_symbols, start, end, api_type)
-    market_data = _fetch_market_data(market_symbol, start, end, api_type)
-    final_allocation = _get_portfolio_allocation(stock_symbols, allocation)
-    
-    portfolio = _build_portfolio_from_df(stock_data, final_allocation, market_data=market_data)
-    return portfolio
-
-# Stock Data Verification and Adjusted Close Retrieval
+# ~~~~~~~~~~~ Stock Data Verification and Adjusted Close Retrieval ~~~~~~~~~~~
 
 def _verify_stock_presence_in_datacol(stock_symbols, stock_dataframe):
     symbols_present = any((symbol in column for symbol in stock_symbols for column in stock_dataframe.columns))
     return symbols_present
 
-def _retrieve_adjusted_close_from_dataframe(stock_data: pandas.DataFrame) -> pandas.Series:
+def _retrieve_adjusted_close_from_dataframe(stock_df: pandas.DataFrame) -> pandas.Series:
 
-    if "Adj Close" not in stock_data.columns:
+    if "Adj Close" not in stock_df.columns:
         raise ValueError("The provided dataframe does not have an 'Adj Close' column.")
     
-    adjust_close_data = stock_data["Adj Close"].squeeze()
+    adjust_close_data = stock_df["Adj Close"].squeeze(axis=None)
     return adjust_close_data
 
+# ~~~~~~~~~~~  Portfolio Stock Apportionment ~~~~~~~~~~~
 
+def _compose_pf_stock_apportionment(column_title=None, stock_df=None):
+    _validate_input_exclusivity(column_title, stock_df)
+    _validate_input_types(column_title, stock_df)
+
+    if stock_df:
+        column_title = _extract_and_validate_names_from_data(stock_df)
+    
+    return _generate_balanced_allocation(column_title)
+
+def _generate_balanced_allocation(column_designation):
+    """Generate balanced allocation for each stock."""
+    allocation = [1.0 / len(column_designation) for _ in column_designation]
+    return pandas.DataFrame({"Allocation": allocation, "Title": column_designation})
+
+def _validate_input_exclusivity(column_title, stock_df):
+    """Ensure only one of 'column_title' or 'stock_df' is provided."""
+    if (column_title is not None and stock_df is not None) or (column_title is None and stock_df is None):
+        raise ValueError("Please ensure to provide either 'column_title' or 'stock_df', but refrain from providing both simultaneously.")
+
+def _validate_input_types(column_title, stock_df):
+    """Validate the types of provided arguments."""
+    if column_title and not isinstance(column_title, list):
+        raise ValueError("The data type for 'column_title' should be a list.")
+    if stock_df and not isinstance(stock_df, pandas.DataFrame):
+        raise ValueError("The data type for 'stock_df' should be a a pandas.DataFrame.")
+
+def _extract_and_validate_names_from_data(stock_df):
+    """Extract column names from stock_df and validate them."""
+    column_titles = stock_df.columns
+    column_prefixes = [title.split("-")[0].strip() for title in column_titles]
+    for x, prefix in enumerate(column_prefixes):
+        conflict_prefix = [compar_prefix for position, compar_prefix in enumerate(column_prefixes) if position != x]
+        if prefix in conflict_prefix:
+            raise ValueError(
+                f"The pandas.DataFrame 'stock_df' displays inconsistency in its column denominations."
+                + f" A substring of {prefix} were found in numerous instances, where prefix sharing has occured."
+                + "\n Suggested solutions:"
+                + "\n 1. Utilize the 'build_portfolio' function and offer a 'apportionment' dataframe indicating stock allocations."
+                + "\n This approach will aid in isolating accurate columns from the provided data."
+                + "\n 2. Ensure the dataframe provided doesn't have columns with similar prefixes, such as 'APPL' and 'APPL - Adj Close'."
+            )
+    return column_titles
+
+# ~~~~~~~~~~~ Portfolio Construction and Data Preparation Operations ~~~~~~~~~~~
+
+def _prepare_data(stock_data: pandas.DataFrame, apportionment: pandas.DataFrame, column_id_tags: List[str]) -> pandas.DataFrame:
+    """Prepare the data by fetching the required stock columns."""
+    if not _verify_stock_presence_in_datacol(apportionment['Name'].values, stock_data):
+        raise ValueError("Error: None of the provided stock titles were found in the provided dataframe.")
+    return _fetch_stock_columns(stock_data, apportionment['Name'].values, column_id_tags)
+
+def _add_stock_to_portfolio(portfolio: Portfolio_Optimised_Methods, stock_name: str, apportionment_row: pandas.Series, stock_data: pandas.DataFrame) -> None:
+    """Add an individual stock to the portfolio."""
+    stock_series = stock_data.loc[:, stock_name].copy(deep=True).squeeze()
+    stock_instance = Stock(apportionment_row, asset_price_history=stock_series)
+    portfolio.incorporate_stock(stock_instance, suspension_changes=True)
+
+def _portfolio_assembly_df(
+    stock_data: pandas.DataFrame,
+    apportionment: pandas.DataFrame = None,
+    column_id_tags: List[str] = None,
+    index_data: pandas.DataFrame = None,
+) -> Portfolio_Optimised_Methods:
+    
+    if apportionment is None:
+        apportionment = _compose_pf_stock_apportionment(stock_df=stock_data)
+    if column_id_tags is None:
+        column_id_tags = ["Adj Close"]
+
+    stock_data = _prepare_data(stock_data, apportionment, column_id_tags)
+    
+    portfolio_df = Portfolio_Optimised_Methods()
+    
+    if index_data is not None and not index_data.empty:
+        market_series = _retrieve_adjusted_close_from_dataframe(index_data)
+        portfolio_df.financial_index = Index(price_history=market_series)
+    
+    for i in range(len(apportionment)):
+        _add_stock_to_portfolio(portfolio_df, apportionment.iloc[i].Name, apportionment.iloc[i], stock_data)
+
+    portfolio_df._cascade_changes()
+    return portfolio_df
+
+# ~~~~~~~~~~~ Set Comparison Utility Functions ~~~~~~~~~~~
+
+def _all_in(set1, set2):
+    """
+    Check if all elements of set1 are present in set2.
+    
+    Parameters:
+    - set1 (iterable): The first collection of elements.
+    - set2 (iterable): The second collection of elements.
+    
+    Returns:
+    - bool: True if all elements of set1 are in set2, otherwise False.
+    """
+    return set(set1).issubset(set2)
+
+def _any_in(set1, set2):
+    """
+    Check if any element of set1 is present in set2.
+    
+    Parameters:
+    - set1 (iterable): The first collection of elements.
+    - set2 (iterable): The second collection of elements.
+    
+    Returns:
+    - bool: True if any element of set1 is in set2, otherwise False.
+    """
+    return bool(set(set1) & set(set2))
+
+def _diff(set1, set2):
+    """
+    Get elements that are in set2 but not in set1. I.e. the complement.
+    
+    Parameters:
+    - set1 (iterable): The first collection of elements.
+    - set2 (iterable): The second collection of elements.
+    
+    Returns:
+    - list: A list containing elements that are in set2 but not in set1.
+    """
+    return list(set(set2) - set(set1))
+
+# ~~~~~~~~~~~ Final Portfolio Composition, Argument Validation, and Integrity Check ~~~~~~~~~~~
+
+def formulate_final_portfolio(**kwargs):
+
+    # Message encouraging users to consult the function's documentation for guidance.
+    documentation_ref = (
+        "Please refer to the report examples for guidance on formatting."
+    )
+
+    # Message for when an unsupported argument is passed to the function.
+    forbidden_arg_err = (
+        "Unsupported arguments provided: {}\n"
+        "Valid arguments include: {}\n" + documentation_ref
+    )
+
+    # Message for when conflicting arguments are provided.
+    arg_conflict_err = (
+        "Argument conflict detected: {} cannot be used in combination with {}.\n" 
+        + documentation_ref
+    )
+    
+    provided_args = [
+        "apportionment",
+        "stock_symbols",
+        "start",
+        "end",
+        "stock_data",
+        "api_type",
+        "index_symbol",
+    ]
+    
+    _validate_arguments(kwargs, provided_args, forbidden_arg_err, documentation_ref)
+
+    fin_portfolio = Portfolio_Optimised_Methods()
+
+    if "stock_symbols" in kwargs.keys():
+        fin_portfolio = handle_api_assembly(kwargs, provided_args, arg_conflict_err)
+
+    elif "asset_price_history" in kwargs.keys():
+        fin_portfolio = handle_df_assembly(kwargs, provided_args, arg_conflict_err)
+
+    _check_portfolio_integrity(fin_portfolio, documentation_ref)
+
+    return fin_portfolio
+
+def _validate_arguments(kwargs, provided_args, forbidden_arg_err, documentation_ref):
+    if not kwargs:
+        raise ValueError(
+            "Error:\nbuild_portfolio() requires input arguments.\n" + documentation_ref
+        )
+    
+    if not _all_in(kwargs.keys(), provided_args):
+        forbidden_arg = _diff(provided_args, kwargs.keys())
+        raise ValueError(forbidden_arg_err.format(forbidden_arg, provided_args))
+
+
+def handle_api_assembly(kwargs, provided_args, arg_conflict_err):
+    permissible_required_args = ["stock_symbols"]
+    permissible_args = [
+        "stock_symbols",
+        "apportionment",
+        "start",
+        "end",
+        "api_type",
+        "index_symbol",
+    ]
+    complement_args = _diff(permissible_args, provided_args)
+    if _all_in(permissible_required_args, kwargs.keys()):
+        if _any_in(complement_args, kwargs.keys()):
+            raise ValueError(arg_conflict_err.format(complement_args, permissible_required_args))
+        
+    return _portfolio_assembly_api(**kwargs)
+
+def handle_df_assembly(kwargs, provided_args, arg_conflict_error):
+    permissible_required_args = ["asset_price_data"]
+    permissible_args = ["asset_price_data", "apportionment"]
+    complement_args = _diff(permissible_args, provided_args)
+    if _all_in(permissible_required_args, kwargs.keys()):
+        if _any_in(complement_args, kwargs.keys()):
+            raise ValueError(arg_conflict_error.format(complement_args, permissible_required_args))
+
+    return _portfolio_assembly_df(**kwargs)
+
+
+def _check_portfolio_integrity(fin_portfolio, documentation_ref):
+    if (
+        fin_portfolio.portfolio_distribution.empty
+        or fin_portfolio.asset_price_history.empty
+        or not fin_portfolio.stock_objects
+        or any(
+            attr is None for attr in [
+                fin_portfolio.pf_forecast_return, fin_portfolio.portfolio_volatility, fin_portfolio.downside_risk,
+                fin_portfolio.sharpe_ratio, fin_portfolio.sortino_ratio, fin_portfolio.portfolio_skewness, fin_portfolio.portfolio_kurtosis
+            ]
+        )
+    ):
+        raise ValueError(
+            "This point should not be reached."
+            + "An issue occurred during the instantiation of the Portfolio."
+            + documentation_ref
+        )
