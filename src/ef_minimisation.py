@@ -28,7 +28,7 @@ def calculate_annualized_volatility(proportion_of_investment, avg_revenue, disp_
     proportion_of_investment /= numpy.sum(proportion_of_investment)
 
     # Call the calculate_annualisation_of_measures function to get the annualized measures
-    _, annualised_volatility, _ = calculate_annualisation_of_measures(proportion_of_investment, avg_revenue, disp_matrix)
+    annualised_return, annualised_volatility, sharpe_ratio = calculate_annualisation_of_measures(proportion_of_investment, avg_revenue, disp_matrix)
 
     # Return the annualized volatility
     return annualised_volatility

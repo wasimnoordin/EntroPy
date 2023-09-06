@@ -5,7 +5,7 @@ def calculate_cumulative_return(input_stock_prices, cumulative_dividend=None):
     if cumulative_dividend is None:
         cumulative_dividend = 0
     
-    if not isinstance(input_stock_prices, pandas.DataFrame):
+    if not isinstance(input_stock_prices, pandas.DataFrame or pandas.Series):
         raise TypeError("Input data must be a pandas DataFrame.")
     
     if input_stock_prices.empty:
@@ -15,7 +15,6 @@ def calculate_cumulative_return(input_stock_prices, cumulative_dividend=None):
     cleaned_data = input_stock_prices.dropna(
         axis=0, 
         how="any", 
-        subset=None, 
         inplace=False
         )
     
@@ -36,10 +35,7 @@ def calculate_cumulative_return(input_stock_prices, cumulative_dividend=None):
 
 
 def calculate_daily_return(input_stock_prices):
-
-    if not isinstance(input_stock_prices, pandas.DataFrame):
-        raise TypeError("Input data must be a pandas DataFrame.")
-    
+   
     if input_stock_prices.empty:
         raise ValueError("Input DataFrame cannot be empty.")
     
@@ -55,15 +51,13 @@ def calculate_daily_return(input_stock_prices):
     daily_return.dropna(
         axis=0, 
         how="all", 
-        subset=None, 
         inplace=True
         )
     
     # Replace infinite valeus with NaN
     daily_return = daily_return.replace([numpy.inf, -numpy.inf], 
-    numpy.nan, 
-    inplace=False, 
-    limit=None
+    numpy.nan,  
+    limit=None,
     )
 
     return daily_return
@@ -109,7 +103,6 @@ def calculate_daily_return_logarithmic(input_stock_prices):
     daily_return_logarithmic = daily_return_logarithmic.dropna(
         axis=0, 
         how="all", 
-        subset=None, 
         inplace=False
         )
     

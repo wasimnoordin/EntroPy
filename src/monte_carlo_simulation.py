@@ -161,7 +161,7 @@ class MonteCarloMethodology(MonteCarloSimulation):
 
         # Create pandas DataFrames for proportions and results
         proportion_col = list(self.asset_revenue.columns)
-        product_col = ["Annualised Return", "Volatility", "Sharpe Index"]
+        product_col = ["Annualised Return", "Volatility", "Sharpe Ratio"]
         proportion_data_frame = pandas.DataFrame(data=proportion_list, columns=proportion_col)
         product_data_frame = pandas.DataFrame(data=product_list, columns=product_col)
 
@@ -195,8 +195,8 @@ class MonteCarloMethodology(MonteCarloSimulation):
 
         # Catalogue the indices of the optimal portfolios in a dictionary
         optimal_indices = {
-            "Minimal Volatility": volatility_minimisation,
-            "Maximal Sharpe Index": sharpe_ratio_maximisation
+            "Minimum Volatility": volatility_minimisation,
+            "Maximum Sharpe Ratio": sharpe_ratio_maximisation
         }
 
         # Extract the optimal proportions for portfolios and retain them in a DataFrame
@@ -238,8 +238,8 @@ class MonteCarloMethodology(MonteCarloSimulation):
 
         # Define the properties for the different types of portfolios
         portfolio_types = {
-            "Minimum Volatility": {"color": "blue", "label": "Minimum Volatility"},
-            "Maximum Sharpe Ratio": {"color": "orange", "label": "Maximum Sharpe Ratio"},
+            "Minimum Volatility": {"color": "royalblue", "label": "Minimum Volatility"},
+            "Maximum Sharpe Ratio": {"color": "hotpink", "label": "Maximum Sharpe Ratio"},
         }
 
         # Plot the portfolios
@@ -247,9 +247,9 @@ class MonteCarloMethodology(MonteCarloSimulation):
             pyplot.scatter(
                 self.optimised_product.loc[portfolio_type]["Volatility"],
                 self.optimised_product.loc[portfolio_type]["Annualised Return"],
-                marker="o",       # Marker
+                marker="*",       # Marker
                 color=properties["color"],
-                s=120,            # Size for the markers
+                s=150,            # Size for the markers
                 label=properties["label"],
             )
 
@@ -265,21 +265,21 @@ class MonteCarloMethodology(MonteCarloSimulation):
             pyplot.scatter(
                 prelim_config[1],  # Volatility
                 prelim_config[0],  # Annualised Return
-                marker="o",         # Marker
-                color="purple",     # Color
-                s=120,              # Size for the marker
+                marker="1",         # Marker
+                color="black",     # Color
+                s=150,              # Size for the marker
                 label="Initial Portfolio",
             )
 
         # Set the title and labels
-        pyplot.title(f"Portfolio Optimization: Monte Carlo Simulation")
-        pyplot.xlabel(f"Volatility (Frequency: {self.regular_trading_days})")
-        pyplot.ylabel(f"Annualised Return (Frequency: {self.regular_trading_days})")
-        cbar.ax.set_ylabel(f"Sharpe Ratio (Frequency: {self.regular_trading_days})", rotation=90)
-        pyplot.legend(loc='upper left')  # Different legend location
+        pyplot.title(f"Portfolio Optimization: Monte Carlo Simulation", fontsize = 16)
+        pyplot.xlabel(f"Volatility", fontsize = 12)
+        pyplot.ylabel(f"Annualised Return", fontsize = 12)
+        cbar.ax.set_ylabel(f"Sharpe Ratio (Tradiing Days: {self.regular_trading_days})", rotation=90)
+        pyplot.legend(loc='upper left')  # Legend location
 
-        # Show the plot
-        pyplot.show()
+        # # Show the plot
+        # pyplot.show()
 
     def mcs_print_attributes(self):
         """Prints out the properties of the Monte Carlo Simulation."""
@@ -305,6 +305,10 @@ class MonteCarloMethodology(MonteCarloSimulation):
             print(f"\nTime period (days): {self.regular_trading_days}")
             print_attribute("\nAnnualised Return", self.optimised_product.loc[optimized_parameter_type]['Annualised Return'])
             print_attribute("Volatility", self.optimised_product.loc[optimized_parameter_type]['Volatility'])
+
+            print("Optimized parameter type:", optimized_parameter_type)
+            print("Optimized product DataFrame:\n", self.optimised_product)
+
             print_attribute("Sharpe Ratio", self.optimised_product.loc[optimized_parameter_type]['Sharpe Ratio'])
             print("\nOptimal allocations: \n")
             for asset, allocation in self.optimised_product.loc[optimized_parameter_type].items():

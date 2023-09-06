@@ -29,16 +29,17 @@ def _prepare_ma_calculator_data(input_stock_prices):
 def _compute_ma_calculator_averages(moving_average_values, moving_avg_function, window_sizes):
     # Iterate through the window sizes and apply the moving average function
     for window_size in window_sizes:
-        column_name = str(window_size) + "-day"
+        column_name = "{}d".format(window_size)
         moving_average = moving_avg_function(moving_average_values, window_size=window_size)
-        moving_average_values[column_name] = moving_average["Stock"]
+        moving_average_values[column_name] = moving_average.iloc[:, 0]
 
 # Plot moving averages and associated signals
-def _plot_moving_averages(moving_average_values, moving_average_function, window_sizes):
+def _plot_moving_averages(moving_average_values, moving_avg_function, window_sizes):
     figure, axes = pyplot.subplots(figsize=(10, 6))
-    moving_average_values.plot(axes=axes, linewidth=2)
+    for column in moving_average_values.columns:
+        axes.plot(moving_average_values.index, moving_average_values[column], label=column, linewidth=2)
     _create_and_plot_signals(axes, moving_average_values, window_sizes)
-    pyplot.title(f"Moving Average Envelope ({moving_average_function.__name__})", fontsize=14)
+    pyplot.title(f"Moving Average Envelope ({moving_avg_function.__name__.replace('_', ' ')})", fontsize=14)
     pyplot.legend(ncol=2, fontsize=10)
     pyplot.xlabel(moving_average_values.index.name, fontsize=12)
     pyplot.ylabel("Value", fontsize=12)
@@ -98,8 +99,8 @@ def simple_moving_average_mean(
         raise ValueError("On must be a string.")
     if axis not in [0, 1]:
         raise ValueError("Axis must be 0 or 1.")
-    if closed is not None and closed not in ['right', 'left', 'both', 'neither']:
-        raise ValueError("Closed must be one of 'right', 'left', 'both', or 'neither'.")
+    if closed is not None and closed not in ['RHS', 'LHS', 'both', 'neither']:
+        raise ValueError("Closed must be one of 'RHS', 'LHS', 'both', or 'neither'.")
     if input_stock_prices.empty:
         raise ValueError("Input data must not be empty.")
 
@@ -185,8 +186,8 @@ def simple_moving_average_standard_deviation(
         raise ValueError("On must be a string.")
     if axis not in [0, 1]:
         raise ValueError("Axis must be 0 or 1.")
-    if closed is not None and closed not in ['right', 'left', 'both', 'neither']:
-        raise ValueError("Closed must be one of 'right', 'left', 'both', or 'neither'.")
+    if closed is not None and closed not in ['RHS', 'LHS', 'both', 'neither']:
+        raise ValueError("Closed must be one of 'RHS', 'LHS', 'both', or 'neither'.")
     if ddof < 0:
         raise ValueError("Degrees of freedom (ddof) must be non-negative.")
     if input_stock_prices.empty:
@@ -283,7 +284,7 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
 
         # Convert Series to DataFrame if necessary
         if isinstance(input_stock_prices, pandas.Series):
-            input_stock_prices = pandas.DataFrame({'stock_price': input_stock_prices})
+            input_stock_prices = pandas.DataFrame({'Stock Price': input_stock_prices})
 
         return input_stock_prices
 
@@ -306,8 +307,9 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
     def _calculate_moving_average(input_stock_prices, moving_avg_function, window_size):
         bband_moving_averages = moving_average_calculator(input_stock_prices, moving_avg_function, [window_size], visualise=False)
         feature_column = input_stock_prices.columns.values[0]
-        # feature_column = input_stock_prices.iloc[:, 0].name
+        bband_moving_averages = bband_moving_averages.rename(columns={str(window_size) + 'd': str(window_size) + '-day'})
         return bband_moving_averages, feature_column
+
 
     def _calculate_standard_deviation(input_stock_prices, moving_avg_function, window_size, feature_column):
         # Determine the standard deviation function based on the moving average type
@@ -336,7 +338,7 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         return bollinger_bands
         
 
-    def plot_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function):
+    def visualise_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function):
         # Create an axis
         _, axes = pyplot.subplots(nrows=1)
 
@@ -348,16 +350,16 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
         y_values = numpy.concatenate([bollinger_bands["Upper BB"], bollinger_bands["Lower BB"][::-1]])
 
         # Fill the area between the upper and lower Bollinger Bands
-        axes.fill(x_values, y_values, facecolor="#FFC0CB", alpha=0.5, label="Bollinger Band")
+        axes.fill(x_values, y_values, facecolor="gold", alpha=0.5, label="Bollinger Band")
         
         # Plot the original data and moving average
         input_stock_prices.plot(ax=axes, label='Original Data')
         bollinger_bands[window_label].plot(ax=axes, label=f'{window_size} Day Moving Average')
 
         # Set the title using the provided function name and window size
-        title_text = f"Bollinger Band (+/- 2 Standard Deviations) with {moving_avg_function.__name__.replace('_', ' ').title()} Moving Average over {window_size} Days"
-        title_font = {'family': 'serif', 'color': 'darkred', 'weight': 'normal', 'size': 16}
-        pyplot.title(title_text, fontdict=title_font)
+        title_text = f"Bollinger Band (+/-2σ) & {moving_avg_function.__name__.replace('_', ' ').title()} over {window_size} Days"
+        # title_font = {'family': 'serif', 'color': 'darkred', 'weight': 'normal', 'size': 16}
+        pyplot.title(title_text)
 
         # Add legend and customize its appearance
         legend_font = {'size': 10}
@@ -383,4 +385,4 @@ def bollinger_bands(input_stock_prices, moving_avg_function: Callable, window_si
     bollinger_bands, feature_column = compute_bollinger_bands(input_stock_prices, moving_avg_function, window_size)
 
     # Plot the Bollinger Bands
-    plot_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function)
+    visualise_bollinger_bands(bollinger_bands, input_stock_prices, window_size, moving_avg_function)

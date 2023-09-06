@@ -6,16 +6,16 @@ from src.investment_item import Investment
 
 class Stock(Investment):
 
-    def __init__(self, stock_details: pandas.DataFrame, input_stock_prices: pandas.Series) -> None:
+    def __init__(self, stock_details: pandas.DataFrame, asset_price_history: pandas.Series) -> None:
         self.investment_name = stock_details['Name']
         self.stock_details = stock_details
-        self.initialize_asset(input_stock_prices)
+        self.initialize_asset(asset_price_history)
         self.beta_coefficient = None
 
-    def initialize_asset(self, input_stock_prices: pandas.Series):
-        if not isinstance(input_stock_prices, pandas.Series):
+    def initialize_asset(self, asset_price_history: pandas.Series):
+        if not isinstance(asset_price_history, pandas.Series):
             raise TypeError("Data must be a pandas Series containing stock price information.")
-        super().__init__(input_stock_prices, self.investment_name, asset_category="Stock")
+        super().__init__(asset_price_history, self.investment_name, investment_category="Stock")
 
     def calculate_beta_coefficient(self, index_returns: pandas.Series) -> float:
 
@@ -40,8 +40,8 @@ class Stock(Investment):
 
         return beta_coefficient
        
-    def display_properties(self):
-        properties = [
+    def display_stock_attributes(self):
+        stock_attributes = [
             ("Category", self.investment_category),
             ("Stock", self.investment_name),
             ("Expected Return", f"{self.forecast_investment_return:.4f}"),
@@ -52,16 +52,16 @@ class Stock(Investment):
         ]
 
         # Filter out None values (e.g., if beta is None)
-        properties = [prop for prop in properties if prop]
+        stock_attributes = [prop for prop in stock_attributes if prop]
 
         # Determine the maximum length of the property names for alignment
-        max_length = max(len(prop[0]) for prop in properties)
+        max_length = max(len(prop[0]) for prop in stock_attributes)
 
         # Construct the upper part with two columns
         upper_part = "=" * (max_length * 2 + 10)
-        for i in range(0, len(properties) - 1, 2):
-            upper_part += f"\n{properties[i][0]}: {properties[i][1]:<{max_length}} | {properties[i + 1][0]}: {properties[i + 1][1]}"
-        upper_part += f"\n{properties[-1][0]}: {properties[-1][1]}"
+        for i in range(0, len(stock_attributes) - 1, 2):
+            upper_part += f"\n{stock_attributes[i][0]}: {stock_attributes[i][1]:<{max_length}} | {stock_attributes[i + 1][0]}: {stock_attributes[i + 1][1]}"
+        upper_part += f"\n{stock_attributes[-1][0]}: {stock_attributes[-1][1]}"
         upper_part += "\n" + "=" * (max_length * 2 + 10)
 
         # Construct the lower part with investment information
@@ -84,14 +84,14 @@ class Stock(Investment):
 
 class Index(Investment):
   
-    def __init__(self, price_history: pandas.Series) -> None:
+    def __init__(self, asset_price_history: pandas.Series) -> None:
 
         # Call the parent class constructor
-        super().__init__(price_history, investment_name=price_history.name, investment_category="Financial Index")
+        super().__init__(asset_price_history, investment_name=asset_price_history.name, investment_category="Financial Index")
         # Compute index returns and store them
         self.calculate_daily_return = self.compute_index_perday_returns()
 
     def compute_index_perday_returns(self) -> pandas.Series:
         # Utilize the calculate_daily_returns function to compute the daily returns
-        index_perday_returns = calculate_daily_return(self.price_history)
+        index_perday_returns = calculate_daily_return(self.asset_price_history)
         return index_perday_returns

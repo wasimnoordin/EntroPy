@@ -1,33 +1,29 @@
-import numpy
-import pandas
-from typing import Union, List
-import matplotlib.pylab as pylab
 import datetime
+from typing import List, Union
 
-from src.investment_item import Investment #NOT NEEDED?
-from src.investment_performance import (
-    calculate_cumulative_return,
-    calculate_daily_return,
-    calculate_daily_return_logarithmic,
-    calculate_historical_avg_return,
-)
+import matplotlib.pyplot as pyplot
+import numpy 
+import pandas
+
 from src.markowitz_efficient_frontier import EfficientFrontierMaster
+from src.monte_carlo_simulation import MonteCarloMethodology
 from src.measures import (
+    calculate_downside_risk,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_value_at_risk,
     calculate_stratified_average,
     calculate_portfolio_volatility,
-    calculate_sharpe_ratio,
-    calculate_annualisation_of_measures,
-    calculate_value_at_risk,
-    calculate_downside_risk,
-    calculate_sortino_ratio,
 )
-from src.monte_carlo_simulation import MonteCarloMethodology
-from src.stock_and_index import (
-    Stock, 
-    Index,
+from src.investment_performance import (
+    calculate_cumulative_return,
+    calculate_daily_return_logarithmic,
+    calculate_daily_return,
+    calculate_historical_avg_return,
 )
+from src.stock_and_index import Stock, Index
 
-class Portfolio_Optimised_Methods:
+class Portfolio_Optimised_Functions:
 
     def __init__(self):
         # DataFrames and Objects
@@ -115,7 +111,7 @@ class Portfolio_Optimised_Methods:
         self.__validate_regular_trading_days(attribute)
         self.__regular_trading_days = attribute
         # Amend related quantities due to the adjustment in regular trading days
-        self._cascade_changes()
+        self._update()
 
     def __validate_regular_trading_days(self, attribute: int) -> None:
         """Checks the validity of the regular trading days value, ensuring it is a positive integer."""
@@ -130,7 +126,7 @@ class Portfolio_Optimised_Methods:
         self.__validate_risk_free_ROR(attribute)
         self.__risk_free_ROR = attribute
         # Amend related quantities due to the adjustment in risk_free_ROR
-        self._cascade_changes()
+        self._update()
 
     def __validate_risk_free_ROR(self, attribute: Union[float, int]) -> None:
         """Validates that the risk-free rate is a float or integer and between 0 and 1."""
@@ -157,7 +153,7 @@ class Portfolio_Optimised_Methods:
         self.__validate_confidence_level_value_at_risk(attribute)
         self.__confidence_interval_value_at_risk = attribute
         # now that this changed, update VaR
-        self._cascade_changes()
+        self._update()
 
     def __validate_confidence_level_value_at_risk(self, attribute: float) -> None:
         """Validates that the confidence level is a float and within the range [0, 1]."""
@@ -167,173 +163,58 @@ class Portfolio_Optimised_Methods:
                 raise ValueError("Confidence level must be a float in the range (0, 1).")
         else:
             raise ValueError("Confidence level must be a float.")
+
+    def add_stock(self, stock: Stock, defer_update=False) -> None:
         
-    # ~~~~~~~~~~~~~~~~~~~~~~ STOCK MANAGEMENT ~~~~~~~~~~~~~~~~~~~~~~
-    
-    def incorporate_stock(self, asset_stock: Stock, suspension_changes=False) -> None:
-        # Update stocks dictionary
-        self._update_stocks(asset_stock)
-        
-        # Update portfolio with stock information
-        self._update_portfolio(asset_stock)
-        
-        # Update portfolio name
-        self._update_portfolio_name()
-
-        # Add stock data to the portfolio
-        self._integrate_stock_data(asset_stock)  
-
-        # Only if cascading changes are not suspended, perform them
-        if suspension_changes == False:
-            self._cascade_changes()
-
-    def _update_stocks(self, asset_stock: Stock) -> None:
-        # Update stock_objects dictionary
-        self.stock_objects.update({asset_stock.investment_name: asset_stock})
-
-    def _update_portfolio(self, asset_stock: Stock) -> None:
-        # Get transposed stock info DataFrame
-        stock_info = self._get_stock_info(asset_stock)
-        
-        # Append stock info to the portfolio
-        self.portfolio_distribution = self._append_stock_info(stock_info)
-
-    def _update_portfolio_name(self) -> None:
-        # Set a descriptive portfolio name
-        self.portfolio_distribution.investment_name = "Diversified Investment Portfolio"
-
-    def _get_stock_info(self, asset_stock: Stock) -> pandas.DataFrame:
-        # Get stock information DataFrame and transpose
-        stock_info_frame = asset_stock.stock_details.to_frame()
-        stock_info_transposed = stock_info_frame.transpose()
-        return stock_info_transposed
-
-    def _append_stock_info(self, stock_info_transposed: pandas.DataFrame) -> pandas.DataFrame:
-        # Append stock info to the portfolio DataFrame
-        concatenated_portfolio = pandas.concat(
-            objs=[self.portfolio_distribution, stock_info_transposed],
-            ignore_index=True,
-            join='outer'
+        # adding stock to dictionary containing all stocks provided
+        self.stock_objects.update({stock.investment_name: stock})
+        # adding information of stock to the portfolio
+        self.portfolio_distribution = pandas.concat(
+            [self.portfolio_distribution, stock.stock_details.to_frame().T], ignore_index=True
         )
-        return concatenated_portfolio
-    
-    def _integrate_stock_data(self, asset_stock: Stock) -> None:
-        """Integrate stock data into the portfolio object."""
-        
-        # Append the stock's data to the portfolio's DataFrame
-        self._append_stock_to_dataframe(asset_stock)
-        
-        # Adjust the DataFrame index to match the stock's index
-        self._adjust_dataframe_index(asset_stock)
-        
-        # If a financial index is available, calculate and store the stock's beta parameter
-        if self.financial_index:
-            self._store_stock_beta(asset_stock)
+        # setting an appropriate name for the portfolio
+        self.portfolio_distribution.name = "Allocation of stocks"
+        # also add stock data of stock to the dataframe
+        self._add_stock_data(stock)
 
-    def _append_stock_to_dataframe(self, asset_stock: Stock) -> None:
-        """Appends the stock data to the portfolio DataFrame."""
-        
-        # Calculate the location to insert the stock data
-        insertion_location = len(self.asset_price_history.columns)
-        
-        # Get the investment name of the asset_stock
-        investment_name = asset_stock.investment_name
-        
-        # Get the asset_price_history data from the asset_stock
-        stock_data = asset_stock.asset_price_history
-        
-        # Insert the stock data into the portfolio's DataFrame
+        if not defer_update:
+            # update quantities of portfolio
+            self._update()
+
+    def _add_stock_data(self, stock: Stock) -> None:
+        # insert given data into portfolio stocks dataframe:
         self.asset_price_history.insert(
-            loc=insertion_location, 
-            column=investment_name, 
-            value=stock_data,
-            allow_duplicates=False
+            loc=len(self.asset_price_history.columns), column=stock.investment_name, value=stock.asset_price_history
         )
+        # set index correctly
+        self.asset_price_history.set_index(stock.asset_price_history.index.values, inplace=True)
+        # set index name:
+        self.asset_price_history.index.rename("Date", inplace=True)
 
-    def _adjust_dataframe_index(self, asset_stock: Stock) -> None:
-        """Ensures the DataFrame index is consistent and appropriately named."""
-        
-        # Set the DataFrame index to match the stock's index values
-        self.asset_price_history.set_index(
-            asset_stock.asset_price_history.index.values, 
-            append=False, 
-            inplace=True, 
-            verify_integrity=False
-        )
-        
-        # Rename the DataFrame index to "Period"
-        self.asset_price_history.index.rename(
-            "Period", 
-            inplace=True, 
-        )
+        if self.financial_index is not None:
+            # compute beta parameter of stock
+            beta_stock = stock.calculate_beta_coefficient(self.financial_index.calculate_daily_return)
+            # add beta of stock to portfolio's betas dataframe
+            self.beta_stocks[stock.investment_name] = [beta_stock]
 
-    def _store_stock_beta(self, asset_stock: Stock) -> None:
-        """Calculates and stores the beta parameter for the given stock."""
-        
-        # Calculate the individual beta using the stock's data and financial index's daily returns
-        individual_beta = asset_stock.calculate_pf_beta_coefficient(self.financial_index.calculate_daily_return)
-        
-        # Create a list containing the individual beta value
-        beta_list = [individual_beta]
-        
-        # Store the list in the beta_dataframe with the investment name as the column
-        self.beta_dataframe[asset_stock.investment_name] = beta_list
+    def _update(self):
+        # sanity check (only update values if none of the below is empty):
+        if not (self.portfolio_distribution.empty or not self.stock_objects or self.asset_price_history.empty):
+            self.capital_allocation = self.portfolio_distribution.Allocation.sum()
+            self.expected_return = self.calculate_pf_forecast_return(regular_trading_days=self.regular_trading_days)
+            self.volatility = self.calculate_pf_volatility(regular_trading_days=self.regular_trading_days)
+            self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
+            self.var = self.calculate_pf_value_at_risk()
+            self.sharpe = self.calculate_pf_sharpe_ratio()
+            self.sortino = self.calculate_pf_sortino_ratio()
+            self.skew = self.calculate_pf_portfolio_skewness()
+            self.kurtosis = self.calculate_pf_portfolio_kurtosis()
+            if self.financial_index is not None:
+                self.beta = self.calculate_pf_beta_coefficient()
 
-    def _cascade_changes(self):
-        if not self._valid_data_present():
-            return
-        
-        self._update_risk_metrics()
-        self._update_return_metrics()
-        self._update_beta_metrics()
-        self._update_capital_allocation()
-
-    def _valid_data_present(self) -> bool:
-        """
-        Check if necessary data is present to perform the update.
-        
-        Returns:
-        -- bool: True if valid data is present, False otherwise.
-        """
-        return not (self.portfolio_distribution.empty or not self.stock_objects or self.asset_price_history.empty)
-
-    def _update_risk_metrics(self):
-        """
-        Updates the risk metrics of the portfolio.
-        """
-        self.portfolio_volatility = self.calculate_pf_volatility(regular_trading_days=self.regular_trading_days)
-        self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
-        self.value_at_risk = self.calculate_pf_value_at_risk()
-        self.portfolio_skewness = self.calculate_pf_portfolio_skewness()
-        self.portfolio_kurtosis = self.calculate_pf_portfolio_kurtosis()
+    def get_stock(self, name):
+        return self.stock_objects[name]
     
-    def _update_return_metrics(self):
-        """
-        Updates the return metrics of the portfolio.
-        """
-        self.pf_forecast_return = self.calculate_pf_forecast_return(regular_trading_days=self.regular_trading_days)
-        self.sharpe_ratio = self.calculate_pf_sharpe_ratio()
-        self.sortino_ratio = self.calculate_pf_sortino_ratio()
-
-    def _update_beta_metrics(self):
-        """
-        Updates the beta metrics of the portfolio.
-        """
-        if self.financial_index:
-            self.beta_coefficient = self.calculate_pf_beta_coefficient()
-
-    def _update_capital_allocation(self):
-        """
-        Updates the capital allocation of the portfolio.
-        """
-        self.capital_allocation = self.portfolio_distribution.Allocation.sum()
-
-    def extract_stock_object(self, investment_name):
-        try:
-            return self.stock_objects[investment_name]
-        except KeyError:
-            raise ValueError(f"No stock found with the name: {investment_name}")
-        
     # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RISK ~~~~~~~~~~~~~~~~~~~~~~
 
     def calculate_pf_value_at_risk(self) -> float:
@@ -429,7 +310,7 @@ class Portfolio_Optimised_Methods:
         asset_daily_return = calculate_daily_return(self.asset_price_history)
         
         # Compute and return the dispersion matrix for the daily returns
-        portfolio_dispersion_matrix = asset_daily_return.cov
+        portfolio_dispersion_matrix = asset_daily_return.cov()
 
         return portfolio_dispersion_matrix
 
@@ -536,7 +417,7 @@ class Portfolio_Optimised_Methods:
         )
 
         return pf_sortino_ratio
-    
+
     # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MONTE CARLO SIMULATION ~~~~~~~~~~~~~~~~~~~~~~
     def initialise_mcs_instance(self, mcs_iterations=999):
         """
@@ -549,7 +430,7 @@ class Portfolio_Optimised_Methods:
                 mcs_iterations=mcs_iterations,
                 risk_free_ROR=self.risk_free_ROR,
                 regular_trading_days=self.regular_trading_days,
-                initial_weights=self.calculate_pf_proportioned_allocation().values,
+                seed_allocation=self.calculate_pf_proportioned_allocation().values,
             )
         return self.monte_carlo_instance
     
@@ -635,38 +516,32 @@ class Portfolio_Optimised_Methods:
     def optimize_pf_mef_efficient_frontier(self, target_return=None) -> numpy.ndarray:
 
         mef_instance = self.initialise_mef_instance()
-        frontier_data = mef_instance.efficient_frontier(target_return)
+        frontier_data = mef_instance.mef_evaluate_mef(target_return)
         return frontier_data
     
     def optimize_pf_plot_mef(self):
             
             mef_instance = self.initialise_mef_instance()
-            mef_instance.plot_optimal_mef_points()
+            mef_instance.mef_plot_optimal_mef_points()
 
     def optimize_pf_plot_vol_and_sharpe_optimal(self):
 
         mef_instance = self.initialise_mef_instance()
-        mef_instance.plot_vol_and_sharpe_optimal()
-
+        mef_instance.mef_plot_vol_and_sharpe_optimal()
+    
 # ~~~~~~~~~~~~~~~~~~~~~~ PF VISUALISATIONS & REPORTING ~~~~~~~~~~~~~~~~~~~~~~
 
     def pf_stock_visualisation(self, regular_trading_days=252):
         # annual mean returns of all stocks
         asset_returns = self.calculate_pf_historical_avg_return(regular_trading_days=regular_trading_days)
         asset_volatility = self.calculate_pf_stock_volatility(regular_trading_days=regular_trading_days)
-        
-        # Adjusting the size of the plot for better visualization
-        pylab.figure(figsize=(10, 6))
 
         # Plotting the data with enhanced styling
-        pylab.scatter(asset_volatility, asset_returns, marker="8", s=120, color='magenta', edgecolor='black', alpha=0.75)
-
-        # Adding gridlines for better clarity
-        pylab.grid(True, linestyle='--', alpha=0.75)
+        pyplot.scatter(asset_volatility, asset_returns, marker="8", s=95, color='magenta', edgecolor='black', alpha=0.75)
 
         # Annotating the stocks on the scatter plot
         for x, annot_id in enumerate(asset_returns.index, start=0):
-            pylab.annotate(
+            pyplot.annotate(
                 annot_id,
                 (asset_volatility[x], asset_returns[x]),
                 xytext=(0, 8),
@@ -676,70 +551,99 @@ class Portfolio_Optimised_Methods:
                 annotation_clip=None,
             )
 
-        # Setting axis labels and a title
-        pylab.xlabel('Stock Volatility')
-        pylab.ylabel('Annualised Returns')
-        pylab.title('Annualised Stock Returns vs. Volatility')
+        # Setting axis labels and a title (only if they haven't been set yet)
+        if not pyplot.gca().get_xlabel():
+            pyplot.xlabel('Stock Volatility')
+        if not pyplot.gca().get_ylabel():
+            pyplot.ylabel('Annualised Returns')
+        if not pyplot.gca().get_title():
+            pyplot.title('Annualised Stock Returns vs. Volatility')
 
         # Adjusting x and y axis limits
-        pylab.xlim([asset_volatility.min() - 0.01, asset_volatility.max() + 0.01])
-        pylab.ylim([asset_returns.min() - 0.01, asset_returns.max() + 0.01])
-    
+        pyplot.xlim([min(pyplot.xlim()[0], asset_volatility.min() - 0.01), max(pyplot.xlim()[1], asset_volatility.max() + 0.01)])
+        pyplot.ylim([min(pyplot.ylim()[0], asset_returns.min() - 0.01), max(pyplot.ylim()[1], asset_returns.max() + 0.01)])
+
+
     def pf_print_portfolio_attributes(self):
-        header = self._format_header("Portfolio Attributes")
-        stock_info = self._get_pf_stock_info()
-        stats = self._get_portfolio_stats()
-        skewness = self._get_skewness()
-        kurtosis = self._get_kurtosis()
-        info = self._get_information()
-        
-        output = f"\n{header}\n\n{stock_info}\n\n{stats}\n\n{skewness}\n\n{kurtosis}\n\n{info}\n{'=' * 70}\n"
-        print(output)
-
-    def _format_header(self, header_text):
-        return "📊 " + "=" * 100 + "\n" + header_text.center(100) + "\n" + "=" * 100
-
-    def _get_pf_stock_info(self):
-        stock_id = self.portfolio_distribution.Name.values.tolist()
-        info = f"📈 Stocks: {', '.join(stock_id)}"
-        if self.financial_index is not None:
-            info += f"\n🌐 Financial Index: {self.financial_index.investment_name}"
-        return info + "\n" + "-" * 100
-
-    def _get_portfolio_stats(self):
-        stats = f"📈 Forecast Return: {self.pf_forecast_return:0.3f}"
-        stats += f"\n🎢 Portfolio Volatility: {self.portfolio_volatility:0.3f}"
-        stats += f"\n🚀 Sharpe Ratio: {self.sharpe_ratio:0.3f}"
-        stats += f"\n🌪️ Sortino Ratio: {self.sortino_ratio:0.3f}"
-        stats += f"\n📉 Downside Risk: {self.downside_risk:0.4f}"
-        stats += f"\n❗ Value at Risk: {self.value_at_risk:0.4f}"
-        stats += f"\n🔒 Confidence Interval (Value at Risk): {self.confidence_interval_value_at_risk * 100:0.3f} %"
-        if self.beta_coefficient is not None:
-            stats += f"\n🔄 Beta Coefficient: {self.beta_coefficient:0.3f}"
-        stats += f"\n📅 Trading Horizon: {self.regular_trading_days}"
-        stats += f"\n💰 Risk Free Rate of Return: {self.risk_free_ROR:.2%}"
+        stats = self._return_metrics()
+        stats += self._risk_metrics()
+        stats += self._other_metrics()
         return stats + "\n" + "*" * 100
 
-    def _get_skewness(self):
-        return "🔄 Skewness:\n" + str(self.portfolio_skewness.to_frame().transpose()) + "\n" + "*" * 100
+    def _return_metrics(self):
+        stats = f"📈 Forecast Return: {self.pf_forecast_return:0.3f}\n"
+        stats += f"🚀 Sharpe Ratio: {self.sharpe_ratio:0.3f}\n"
+        if self.sortino_ratio is not None:
+            stats += f"🌪️ Sortino Ratio: {self.sortino_ratio:0.3f}\n"
+        else:
+            stats += "🌪️ Sortino Ratio: Data not available\n"
+        return stats
 
-    def _get_kurtosis(self):
-        return "📊 Kurtosis:\n" + str(self.portfolio_kurtosis.to_frame().transpose()) + "\n" + "*" * 100
+    def _risk_metrics(self):
+        stats = f"🎢 Portfolio Volatility: {self.portfolio_volatility:0.3f}\n"
+        stats += f"📉 Downside Risk: {self.downside_risk:0.4f}\n"
+        stats += f"❗ Value at Risk: {self.value_at_risk:0.4f}\n"
+        stats += f"🔒 Confidence Interval (Value at Risk): {self.confidence_interval_value_at_risk * 100:0.3f} %\n"
+        return stats
 
-    def _get_information(self):
-        self.portfolio_distribution = self.portfolio_distribution.rename(columns={
-            'Name': 'Stock Symbol',
-            'Weight': 'Allocation',
-            'Expected Return': 'Forecasted Return',
-            'Volatility': 'Volatility'
-             })
-        return "ℹ️ Information:\n" + str(self.portfolio_distribution) + "\n" + "=" * 100
+    def _other_metrics(self):
+        stats = ""
+        if self.beta_coefficient is not None:
+            stats += f"🔄 Beta Coefficient: {self.beta_coefficient:0.3f}\n"
+        else:
+            stats += "🔄 Beta Coefficient: Data not available\n"
+        stats += f"📅 Trading Horizon: {self.regular_trading_days}\n"
+        stats += f"💰 Risk Free Rate of Return: {self.risk_free_ROR:.2%}\n"
+        return stats
 
     def __str__(self):
         stock_id = ', '.join(self.portfolio_distribution.Name.values.tolist())
         return f"Portfolio containing information about stocks: {stock_id}"
 
+
 # ~~~~~~~~~~~~~~~~~~~~~~ PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
+
+# ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
+
+def yfinance_api_invocation(stock_symbols, from_date=None, to_date=None):  
+
+    # Convert string dates to datetime objects if needed
+    if isinstance(from_date, str):
+        from_date = _str_to_datetime(from_date)  
+    
+    if isinstance(to_date, str):
+        to_date = _str_to_datetime(to_date)  
+    
+    # Retrieve the stock data
+    stock_data = _fetch_yfinance_data(stock_symbols, from_date, to_date)  
+
+    # Adjust the dataframe columns
+    formatted_stock_data = _adjust_dataframe_cols(stock_data, stock_symbols)  
+
+    return formatted_stock_data
+
+# Function to convert a date string to a datetime object
+def _str_to_datetime(date_input): 
+    try:
+        return datetime.datetime.strptime(date_input, "%Y-%m-%d") 
+    except ValueError:
+        raise ValueError(f"Incorrect date format for {date_input}. Expected format: YYYY-MM-DD.")  
+
+# Fetches the stock data from yfinance
+def _fetch_yfinance_data(stock_symbols, from_date, to_date): 
+    try:
+        import yfinance
+        return yfinance.download(stock_symbols, start=from_date, end=to_date)  
+    except ImportError:
+        raise ImportError(
+            "Please ensure that the package YFinance is installed, as it is prerequisited."
+        )
+    except Exception as download_error:
+        raise Exception(
+            "An error occurred while fetching stock data from Yahoo Finance via yfinance."
+        ) from download_error
+
+# ~~~~~~~~~~~~~~~~~~~~~~ TO FIX: PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
 
 # ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
 

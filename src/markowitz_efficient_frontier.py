@@ -15,12 +15,10 @@ input and present the results in a user-friendly manner.
 
 import numpy
 import pandas
-import ef_minimisation 
+from src import ef_minimisation 
 from src.measures import calculate_annualisation_of_measures
 from scipy import optimize
 import matplotlib.pylab as pylab
-
-# Compare optimisation against random search
 
 class EfficientFrontierInitialization:
 
@@ -84,11 +82,29 @@ class EfficientFrontierInitialization:
         if method not in supported_solvers:
             raise ValueError("The provided method is not compatible with minimize function from scipy.optimize")
 
+    def _asset_allocation_dframe(self, allocation):
+            """
+            Create a DataFrame to represent asset allocation.
+            """
+            # Check if allocation is a numpy.ndarray
+            if not isinstance(allocation, numpy.ndarray):
+                raise ValueError("allocation is expected to be a numpy.ndarray")
+
+            # # Check if the length of allocation array matches the number of asset designations
+            # if len(allocation) != len(self.symbol_stocks):
+            #     raise ValueError("Length of allocation array must match the number of asset symbols")
+
+            # Create a pandas DataFrame with the allocation, indexed by asset designations
+            # and with a single column named "Allocation"
+            return pandas.DataFrame(allocation, index=self.symbol_stocks, columns=["Allocation"])
 
 class EfficientFrontierOptimization:
 
     def __init__(self, initialization):
         self.initialization = initialization
+    
+    def _asset_allocation_dframe(self, allocation):
+        return self.initialization._asset_allocation_dframe(allocation)
 
     def mef_volatility_minimisation(self, record_optimized_allocation=True):
         # Validate that recording the optmized asset allocations is a boolean, as it controls whether the allocation are updated or not
@@ -113,10 +129,10 @@ class EfficientFrontierOptimization:
         # The "x" in the result will contain the values that minimize the volatility
         output = optimize.minimize(
             ef_minimisation.calculate_annualized_volatility,
-            param_opt=param_opt,
-            initial_guess=initial_guess,
+            args=param_opt,
+            x0=initial_guess,
             method=method,
-            limits=limits,
+            bounds=limits,
             constraints=constraints,
         )
 
@@ -159,8 +175,8 @@ class EfficientFrontierOptimization:
         # The "x" in the output will contain the values that maximize the Sharpe ratio
         output = optimize.minimize(
             ef_minimisation.calculate_inverse_sharpe_ratio,
-            param_opt=param_opt,
-            initial_guess=initial_guess,
+            args=param_opt,
+            x0=initial_guess,
             method=method,
             bounds=limits,
             constraints=constraints,
@@ -213,10 +229,10 @@ class EfficientFrontierOptimization:
         # The "x" in the output will contain the values that minimize the volatility
         output = optimize.minimize(
             ef_minimisation.calculate_annualized_volatility,
-            param_opt=param_opt,
-            initial_guess=initial_guess,
+            args=param_opt,
+            x0=initial_guess,
             method=method,
-            limits=limits,
+            bounds=limits,
             constraints=constraints,
         )
 
@@ -266,10 +282,10 @@ class EfficientFrontierOptimization:
         # The "x" in the output will contain the values that maximize the Sharpe ratio
         output = optimize.minimize(
             ef_minimisation.calculate_inverse_sharpe_ratio,
-            param_opt=param_opt,
-            initial_guess=initial_guess,
+            args=param_opt,
+            x0=initial_guess,
             method=method,
-            limits=limits,
+            bounds=limits,
             constraints=constraints,
         )
 
@@ -311,7 +327,7 @@ class EfficientFrontierOptimization:
         for target in targets:
             asset_allocation = self.mef_return(target, record_optimized_allocation=False)
             # Calculate the annualized volatility for the given allocations
-            annualized_volatility, _ = calculate_annualisation_of_measures(
+            annualized_return, annualized_volatility, sharpe_ratio = calculate_annualisation_of_measures(
                 asset_allocation, self.initialization.avg_revenue, self.initialization.disp_matrix, regular_trading_days=self.initialization.regular_trading_days
             )
             # Append the annualized volatility and target to the efficient frontier list
@@ -324,11 +340,14 @@ class EfficientFrontierVisualization:
     def __init__(self, initialization, optimization):
         self.initialization = initialization
         self.optimization = optimization
+    
+    def _asset_allocation_dframe(self):
+        return self.initialization.asset_allocation_dataframe
 
     def plot_optimal_mef_points(self):
         # Check if the efficient frontier has been calculated; if not, calculate it
         if self.initialization.optimal_mef_points is None:
-            self.evaluate_mef()
+            self.optimization.evaluate_mef()
 
         # Extract the volatility and annualized return values from the efficient frontier
         annualised_volatility = self.initialization.optimal_mef_points[:, 0]
@@ -339,12 +358,12 @@ class EfficientFrontierVisualization:
 
     def _plot_style_optimal_mef_points(self, volatility, annualized_return):
         # Plot the efficient frontier line using the given volatility and return values
-        pylab.plot(volatility, annualized_return, linestyle='-', color='blue', lw=2, label="Efficient Frontier")
+        pylab.plot(volatility, annualized_return, linestyle='--', color='black', lw=1.5, label="Efficient Frontier")
 
         # Set the title and axis labels with specific font sizes
-        pylab.title("Markowitz Efficient Frontier", fontsize=16)
-        pylab.xlabel("Annualised Volatility", fontsize=14)
-        pylab.ylabel("Annualised Return", fontsize=14)
+        pylab.title("Portfolio Optimisation: Markowitz Efficient Frontier", fontsize=16)
+        pylab.xlabel("Annualised Volatility", fontsize=12)
+        pylab.ylabel("Forecast Return", fontsize=12)
 
         # Add a grid to the plot for better readability
         pylab.grid(True, linestyle='--', alpha=0.5)
@@ -355,21 +374,21 @@ class EfficientFrontierVisualization:
         # Set the size of the plot (optional, can be adjusted as needed)
         pylab.gcf().set_size_inches(10, 6)
 
-        # Display the plot
-        pylab.show()
+        # # Display the plot
+        # pylab.show()
 
     def plot_vol_and_sharpe_optimal(self):
         # Calculate the allocations and magnitudes for the minimum volatility portfolio
-        optimal_minimal_volatility_allocation = self.initialization.mef_volatility_minimisation(record_optimized_allocation=False)
+        optimal_minimal_volatility_allocation = self.optimization.mef_volatility_minimisation(record_optimized_allocation=False)
         optimal_minimal_volatility = self._mef_optimal_ordering(optimal_minimal_volatility_allocation)
 
         # Calculate the allocations and magnitudes for the maximum Sharpe ratio portfolio
-        optimal_maximal_sharpe_allocation = self.initialization.mef_sharpe_maximisation(record_optimized_allocation=False)
+        optimal_maximal_sharpe_allocation = self.optimization.mef_sharpe_maximisation(record_optimized_allocation=False)
         optimal_maximal_sharpe = self._mef_optimal_ordering(optimal_maximal_sharpe_allocation)
 
         # Plot the optimal portfolios
-        self._mef_optimal_style(optimal_minimal_volatility, "g", "o", "MEF Volatility Minimisation") # Green circle marker
-        self._mef_optimal_style(optimal_maximal_sharpe, "r", "s", "MEF Sharpe Maximisation") # Red square marker
+        self._mef_optimal_style(optimal_minimal_volatility, "indigo", "x", "Minimum MEF Volatility") # X Marker
+        self._mef_optimal_style(optimal_maximal_sharpe, "r", "x", "Maximum MEF Sharpe Ratio") # X marker
 
         # Add a legend to the plot with a frame
         pylab.legend(frameon=True, loc='upper left')
@@ -380,8 +399,8 @@ class EfficientFrontierVisualization:
         # Optionally, change the size of the plot
         pylab.gcf().set_size_inches(10, 6)
 
-        # Show the plot
-        pylab.show()
+        # # Show the plot
+        # pylab.show()
 
     def _mef_optimal_ordering(self, asset_allocation):
         # Calculate the annualized volatility and return for the given allocation
@@ -393,20 +412,20 @@ class EfficientFrontierVisualization:
 
     def _mef_optimal_style(self, magnitudes, color, marker, label):
         # Plot a portfolio on the graph with the given values, color, marker, and label
-        pylab.scatter(magnitudes[0], magnitudes[1], marker=marker, color=color, s=150, label=label)
+        pylab.scatter(magnitudes[0], magnitudes[1], marker=marker, color=color, s=110, label=label)
     
-    def _asset_allocation_dframe(self, allocation):
-        # Check if allocation is a numpy.ndarray
-        if not isinstance(allocation, numpy.ndarray):
-            raise ValueError("allocation is expected to be a numpy.ndarray")
+    # def _asset_allocation_dframe(self, allocation):
+    #     # Check if allocation is a numpy.ndarray
+    #     if not isinstance(allocation, numpy.ndarray):
+    #         raise ValueError("allocation is expected to be a numpy.ndarray")
 
-        # Check if the length of allocation array matches the number of asset designations
-        if len(allocation) != len(self.initialization.symbol_stocks):
-            raise ValueError("Length of allocation array must match the number of asset symbols")
+    #     # Check if the length of allocation array matches the number of asset designations
+    #     if len(allocation) != len(self.initialization.symbol_stocks):
+    #         raise ValueError("Length of allocation array must match the number of asset symbols")
 
-        # Create a pandas DataFrame with the allocation, indexed by asset designations
-        # and with a single column named "Allocation"
-        return pandas.DataFrame(allocation, index=self.initialization.symbol_stocks, columns=["Allocation"])
+    #     # Create a pandas DataFrame with the allocation, indexed by asset designations
+    #     # and with a single column named "Allocation"
+    #     return pandas.DataFrame(allocation, index=self.initialization.symbol_stocks, columns=["Allocation"])
 
     def mef_metrics(self, show_details=False):
         # Validate the input and the state of the object
@@ -455,7 +474,7 @@ class EfficientFrontierVisualization:
 
         stats += "\nMost favourable Allocation:"
         # Get the asset allocation DataFrame
-        asset_allocation_df = self._asset_allocation_dframe(self.initialization.asset_allocation_dataframe)
+        asset_allocation_df = self._asset_allocation_dframe()
         # Transpose the DataFrame for better presentation
         transposed_allocation = asset_allocation_df.transpose()
         # Convert to string and add to the existing string with line breaks
@@ -472,6 +491,48 @@ class EfficientFrontierMaster:
         self.optimization = EfficientFrontierOptimization(self.initialization)
         self.visualization = EfficientFrontierVisualization(self.initialization, self.optimization)
 
+    @property
+    def avg_revenue(self):
+        return self.initialization.avg_revenue
+
+    @property
+    def disp_matrix(self):
+        return self.initialization.disp_matrix
+
+    @property
+    def risk_free_ROR(self):
+        return self.initialization.risk_free_ROR
+
+    @property
+    def regular_trading_days(self):
+        return self.initialization.regular_trading_days
+
+    @property
+    def method(self):
+        return self.initialization.method
+
+    @property
+    def symbol_stocks(self):
+        return self.initialization.symbol_stocks
+
+    @property
+    def portfolio_size(self):
+        return self.initialization.portfolio_size
+
+    @property
+    def asset_allocation(self):
+        return self.initialization.asset_allocation
+
+    @property
+    def asset_allocation_dataframe(self):
+        return self.initialization.asset_allocation_dataframe
+
+    @property
+    def optimal_mef_points(self):
+        return self.initialization.optimal_mef_points
+    
+    # Methods that delegate to the Optimization component
+
     def mef_volatility_minimisation(self, record_optimized_allocation=True):
         return self.optimization.mef_volatility_minimisation(record_optimized_allocation)
 
@@ -484,13 +545,15 @@ class EfficientFrontierMaster:
     def mef_volatility(self, target):
         return self.optimization.mef_volatility(target)
 
-    def efficient_frontier(self, targets=None):
+    def mef_evaluate_mef(self, targets=None):
         return self.optimization.evaluate_mef(targets)
+    
+    # Methods that delegate to the Visualization component
 
-    def plot_optimal_mef_points(self):
+    def mef_plot_optimal_mef_points(self):
         return self.visualization.plot_optimal_mef_points()
 
-    def plot_vol_and_sharpe_optimal(self):
+    def mef_plot_vol_and_sharpe_optimal(self):
         return self.visualization.plot_vol_and_sharpe_optimal()
 
     def mef_metrics(self, show_details=False):

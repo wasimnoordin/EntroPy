@@ -14,10 +14,10 @@ class Investment:
     and the class provides methods to compute various financial metrics such
     as expected return, volatility, skewness, and kurtosis.    
     """
-    def __init__(self, price_history: pandas.Series, investment_name: str, investment_category: str = "Financial Index"
+    def __init__(self, asset_price_history: pandas.Series, investment_name: str, investment_category: str = "Financial Index"
     ) -> None:
 
-        self.price_history = price_history
+        self.asset_price_history = asset_price_history
         self.investment_name = investment_name
         self.investment_category = investment_category
 
@@ -33,22 +33,22 @@ class Investment:
 
     def calculate_investment_daily_return(self) -> pandas.Series:
 
-        if self.price_history is None or self.price_history.empty:
+        if self.asset_price_history is None or self.asset_price_history.empty:
             raise ValueError("Price history is not available. Cannot calculate daily returns.")
 
         try:
-            investment_daily_return = calculate_daily_return(self.price_history)
+            investment_daily_return = calculate_daily_return(self.asset_price_history)
         except Exception as e:
             raise RuntimeError(f"An error occurred while calculating daily returns: {str(e)}")
 
         return investment_daily_return
     
     def calculate_forecast_investment_return(self, regular_trading_days: int = 252) -> float:
-        if self.price_history is None or self.price_history.empty:
+        if self.asset_price_history is None or self.asset_price_history.empty:
             raise ValueError("Price history is not available. Cannot calculate expected return.")
 
         try:
-            forecast_investment_return = calculate_historical_avg_return(self.price_history, regular_trading_days=regular_trading_days)
+            forecast_investment_return = calculate_historical_avg_return(self.asset_price_history, regular_trading_days=regular_trading_days)
         except Exception as e:
             raise RuntimeError(f"An error occurred while calculating expected return: {str(e)}")
 
@@ -56,7 +56,7 @@ class Investment:
     
     def calculate_annualised_investment_volatility(self, regular_trading_days: int = 252) -> float:
 
-        if self.price_history is None or self.price_history.empty:
+        if self.asset_price_history is None or self.asset_price_history.empty:
             raise ValueError("Price history is not available. Cannot calculate volatility.")
 
         try:
@@ -68,10 +68,10 @@ class Investment:
         return annualised_investment_volatility
 
     def calculate_investment_skewness(self, skipna=True) -> float:
-        return self.price_history.skew(skipna=skipna)
+        return self.asset_price_history.skew(skipna=skipna)
     
     def calculate_investment_kurtosis(self, skipna=True) -> float:
-        return self.price_history.kurt(skipna=skipna)
+        return self.asset_price_history.kurt(skipna=skipna)
     
     def display_attributes(self):
 
