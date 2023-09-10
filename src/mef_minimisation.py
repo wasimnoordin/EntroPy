@@ -1,6 +1,6 @@
 import numpy
 import pandas
-from src.measures import calculate_annualisation_of_measures
+from src.measures_common import calculate_annualisation_of_measures
 
 def calculate_annualized_volatility(proportion_of_investment, avg_revenue, disp_matrix):
     """Calculates annualized portfolio volatility.

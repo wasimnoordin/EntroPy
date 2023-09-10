@@ -1,14 +1,8 @@
-"""The module contains two classes: 
-``MonteCarlo``, implementing the Monte Carlo method, and 
-``MonteCarloOpt``, enabling users to execute a Monte Carlo run
-for the optimization of financial portfolios, using the initial
-portfolio as a start-point."""
-
 import numpy
 import pandas
 from matplotlib import pyplot
 
-from src.measures import calculate_annualisation_of_measures
+from src.measures_common import calculate_annualisation_of_measures
 
 class MonteCarloSimulation:
     """A class for executing Monte Carlo Simulations (mcs)."""
@@ -17,8 +11,7 @@ class MonteCarloSimulation:
         """
         Parameters:
         -- mc_iterations: int or None, number of iterations for the
-                 Monte Carlo simulation. Setpoint is 5000 according to:
-                 https://blog.3dcs.com/dimensional-analysis-how-many-monte-carlo-simulations-should-i-run
+                 Monte Carlo simulation. 
         """
         self.mcs_iterations = mcs_iterations if mcs_iterations is not None else 5000
     
@@ -45,8 +38,7 @@ class MonteCarloMethodology(MonteCarloSimulation):
     
     Parameters:
     - asset_revenue: Pandas DataFrame, comprises historical asset revenue. 
-    - mcs_iteration: number of iterations for the Monte Carlo simulation. Setpoint is 5000 according to:
-                 https://blog.3dcs.com/dimensional-analysis-how-many-monte-carlo-simulations-should-i-run
+    - mcs_iteration: number of iterations for the Monte Carlo simulation.
     - risk_free_ROR: Float, risk-free rate of return. Obtained as 5.427% on 28/07/23 
                                 from https://www.marketwatch.com/investing/bond/tmubmusd03m?countrycode=bx
     - regular_trading_days (optional): Numeric, average number of regular trading days in a year. 

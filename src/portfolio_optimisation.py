@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Union
+from typing import Union
 
 import matplotlib.pyplot as pyplot
 import numpy 
@@ -7,28 +7,35 @@ import pandas
 
 from src.markowitz_efficient_frontier import EfficientFrontierMaster
 from src.monte_carlo_simulation import MonteCarloMethodology
-from src.measures import (
-    calculate_downside_risk,
-    calculate_sharpe_ratio,
-    calculate_sortino_ratio,
-    calculate_value_at_risk,
+from src.measures_common import (
     calculate_stratified_average,
     calculate_portfolio_volatility,
 )
-from src.investment_performance import (
+
+from src.measures_ratios import (
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+)
+
+from src.measures_risk import (
+    calculate_value_at_risk,
+    calculate_downside_risk,
+)
+
+from src.performance import (
     calculate_cumulative_return,
     calculate_daily_return_logarithmic,
     calculate_daily_return,
     calculate_historical_avg_return,
 )
-from src.stock_and_index import Stock, Index
+from src.stock import Stock
+from src.index import Index
 
 class Portfolio_Optimised_Functions:
 
     def __init__(self):
         # DataFrames and Objects
         self.asset_price_history = pandas.DataFrame()
-        self.beta_dataframe = pandas.DataFrame(index=["beta coefficient"])
         self.portfolio_distribution = pandas.DataFrame()
         self.stock_objects = {}
 
@@ -46,6 +53,7 @@ class Portfolio_Optimised_Functions:
 
         # Beta Metrics
         self.beta_coefficient = None
+        self.beta_dataframe = pandas.DataFrame(index=["beta coefficient"])
 
         # Capital allocation
         self.capital_allocation = None
@@ -60,7 +68,7 @@ class Portfolio_Optimised_Functions:
         self.financial_index = None
         self.monte_carlo_instance = None
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO GETTERS ~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO GETTERS ~~~~~~~~~~~~~~~~~~~~~~
 
     @property
     def capital_allocation(self) -> float:
@@ -87,7 +95,7 @@ class Portfolio_Optimised_Functions:
         """Getter for the confidence interval used in value at risk calculations"""
         return self.__confidence_interval_value_at_risk
       
- # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO SETTERS ~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO SETTERS ~~~~~~~~~~~~~~~~~~~~~~
 
     @capital_allocation.setter
     def capital_allocation(self, attribute) -> None:
@@ -111,7 +119,7 @@ class Portfolio_Optimised_Functions:
         self.__validate_regular_trading_days(attribute)
         self.__regular_trading_days = attribute
         # Amend related quantities due to the adjustment in regular trading days
-        self._update()
+        self._cascade_changes()
 
     def __validate_regular_trading_days(self, attribute: int) -> None:
         """Checks the validity of the regular trading days value, ensuring it is a positive integer."""
@@ -126,7 +134,7 @@ class Portfolio_Optimised_Functions:
         self.__validate_risk_free_ROR(attribute)
         self.__risk_free_ROR = attribute
         # Amend related quantities due to the adjustment in risk_free_ROR
-        self._update()
+        self._cascade_changes()
 
     def __validate_risk_free_ROR(self, attribute: Union[float, int]) -> None:
         """Validates that the risk-free rate is a float or integer and between 0 and 1."""
@@ -153,7 +161,7 @@ class Portfolio_Optimised_Functions:
         self.__validate_confidence_level_value_at_risk(attribute)
         self.__confidence_interval_value_at_risk = attribute
         # now that this changed, update VaR
-        self._update()
+        self._cascade_changes()
 
     def __validate_confidence_level_value_at_risk(self, attribute: float) -> None:
         """Validates that the confidence level is a float and within the range [0, 1]."""
@@ -164,58 +172,99 @@ class Portfolio_Optimised_Functions:
         else:
             raise ValueError("Confidence level must be a float.")
 
-    def add_stock(self, stock: Stock, defer_update=False) -> None:
+    def incorporate_stock(self, stock: Stock, suspend_changes=False) -> None:
+        """Add a stock to the portfolio."""
+    
+        self._store_stock_object(stock)
+        self._append_stock_details_to_portfolio(stock)
+        self._add_stock_data_to_history(stock)
         
-        # adding stock to dictionary containing all stocks provided
+        if not suspend_changes:
+            self._cascade_changes()
+
+    def _store_stock_object(self, stock: Stock) -> None:
+        """Store the stock object in the dictionary."""
+        
         self.stock_objects.update({stock.investment_name: stock})
-        # adding information of stock to the portfolio
+
+    def _append_stock_details_to_portfolio(self, stock: Stock) -> None:
+        """Append stock details to the portfolio distribution."""
+        
         self.portfolio_distribution = pandas.concat(
             [self.portfolio_distribution, stock.stock_details.to_frame().T], ignore_index=True
         )
-        # setting an appropriate name for the portfolio
         self.portfolio_distribution.name = "Allocation of stocks"
-        # also add stock data of stock to the dataframe
-        self._add_stock_data(stock)
 
-        if not defer_update:
-            # update quantities of portfolio
-            self._update()
+    def _add_stock_data_to_history(self, stock: Stock) -> None:
+        """Add stock data to the asset price history."""
+        
+        self._insert_stock_data(stock)
+        self._format_asset_history_index(stock)
+        self._compute_and_store_beta(stock)
 
-    def _add_stock_data(self, stock: Stock) -> None:
-        # insert given data into portfolio stocks dataframe:
+    def _insert_stock_data(self, stock: Stock) -> None:
+        """Insert stock data into the asset price history DataFrame."""
+        
         self.asset_price_history.insert(
             loc=len(self.asset_price_history.columns), column=stock.investment_name, value=stock.asset_price_history
         )
-        # set index correctly
+
+    def _format_asset_history_index(self, stock: Stock) -> None:
+        """Format the index for the asset price history DataFrame."""
+        
         self.asset_price_history.set_index(stock.asset_price_history.index.values, inplace=True)
-        # set index name:
         self.asset_price_history.index.rename("Date", inplace=True)
 
-        if self.financial_index is not None:
-            # compute beta parameter of stock
+    def _compute_and_store_beta(self, stock: Stock) -> None:
+        """Compute the beta coefficient for the stock and store it."""
+        
+        if self.financial_index:
             beta_stock = stock.calculate_beta_coefficient(self.financial_index.calculate_daily_return)
-            # add beta of stock to portfolio's betas dataframe
-            self.beta_stocks[stock.investment_name] = [beta_stock]
+            self.beta_dataframe[stock.investment_name] = [beta_stock]
 
-    def _update(self):
-        # sanity check (only update values if none of the below is empty):
-        if not (self.portfolio_distribution.empty or not self.stock_objects or self.asset_price_history.empty):
-            self.capital_allocation = self.portfolio_distribution.Allocation.sum()
-            self.expected_return = self.calculate_pf_forecast_return(regular_trading_days=self.regular_trading_days)
-            self.volatility = self.calculate_pf_volatility(regular_trading_days=self.regular_trading_days)
-            self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
-            self.var = self.calculate_pf_value_at_risk()
-            self.sharpe = self.calculate_pf_sharpe_ratio()
-            self.sortino = self.calculate_pf_sortino_ratio()
-            self.skew = self.calculate_pf_portfolio_skewness()
-            self.kurtosis = self.calculate_pf_portfolio_kurtosis()
-            if self.financial_index is not None:
-                self.beta = self.calculate_pf_beta_coefficient()
+    def _is_portfolio_ready_for_update(self) -> bool:
+        """Check if the portfolio is ready for an update."""
+        return not (self.portfolio_distribution.empty or not self.stock_objects or self.asset_price_history.empty)
 
-    def get_stock(self, name):
-        return self.stock_objects[name]
+    def _cascade_elementary_metrics(self):
+        """Update basic portfolio metrics."""
+        self.capital_allocation = self.portfolio_distribution.Allocation.sum()
+        self.pf_forecast_return = self.calculate_pf_forecast_return(regular_trading_days=self.regular_trading_days)
+        self.portfolio_volatility = self.calculate_pf_volatility(regular_trading_days=self.regular_trading_days)
+
+    def _cascade_risk_metrics(self):
+        """Update portfolio risk metrics."""
+        self.downside_risk = self.calculate_pf_downside_risk(regular_trading_days=self.regular_trading_days)
+        self.value_at_risk = self.calculate_pf_value_at_risk()
     
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RISK ~~~~~~~~~~~~~~~~~~~~~~
+    def _cascade_performance_metrics(self):
+        """Update portfolio performance metrics."""    
+        self.sharpe_ratio = self.calculate_pf_sharpe_ratio()
+        self.sortino_ratio = self.calculate_pf_sortino_ratio()
+
+    def _cascade_statistical_metrics(self):
+        """Update statistical metrics of the portfolio."""
+        self.portfolio_skewness = self.calculate_pf_portfolio_skewness()
+        self.portfolio_kurtosis = self.calculate_pf_portfolio_kurtosis()
+
+    def _cascade_beta_metrics(self):
+        """Update the financial metric of the portfolio."""
+        if self.financial_index is not None:
+            self.beta_coefficient = self.calculate_pf_beta_coefficient()
+
+    def _cascade_changes(self):
+        """Update the portfolio metrics based on category."""
+        if self._is_portfolio_ready_for_update():
+            self._cascade_elementary_metrics()
+            self._cascade_risk_metrics()
+            self._cascade_performance_metrics()
+            self._cascade_statistical_metrics()
+            self._cascade_beta_metrics()
+
+    def extract_stock(self, stock_symbol):
+        return self.stock_objects[stock_symbol]
+    
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RISK ~~~~~~~~~~~~~~~~~~~~~~
 
     def calculate_pf_value_at_risk(self) -> float:
 
@@ -253,23 +302,41 @@ class Portfolio_Optimised_Functions:
         
         return pf_downside_risk
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RETURN ~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: RETURN ~~~~~~~~~~~~~~~~~~~~~~
     
     def calculate_pf_daily_return(self):
+        """
+        Calculate the daily return of the portfolio.
+        """
+        # Use a helper function to calculate daily return based on asset price history
         return calculate_daily_return(self.asset_price_history)
-    
-    def calculate_pf_cumulative_return(self):
-        return calculate_cumulative_return(self.asset_price_history)
-    
-    def calculate_pf_daily_return_logarithmic(self):
-        return calculate_daily_return_logarithmic(self.asset_price_history)
-    
-    def calculate_pf_historical_avg_return(self, regular_trading_days = 252):
-        return calculate_historical_avg_return(self.asset_price_history, regular_trading_days=regular_trading_days)
-    
-    def calculate_pf_forecast_return(self, regular_trading_days: int = 252) -> float:
 
-        # Validate input
+    def calculate_pf_cumulative_return(self):
+        """
+        Calculate the cumulative return of the portfolio.
+        """
+        # Use a helper function to calculate cumulative return based on asset price history
+        return calculate_cumulative_return(self.asset_price_history)
+
+    def calculate_pf_daily_return_logarithmic(self):
+        """
+        Calculate the logarithmic daily return of the portfolio.
+        """
+        # Use a helper function to calculate logarithmic daily return based on asset price history
+        return calculate_daily_return_logarithmic(self.asset_price_history)
+
+    def calculate_pf_historical_avg_return(self, regular_trading_days=252):
+        """
+        Calculate the historical average return of the portfolio.
+        """
+        # Use a helper function to calculate historical average return based on asset price history and trading days
+        return calculate_historical_avg_return(self.asset_price_history, regular_trading_days=regular_trading_days)
+
+    def calculate_pf_forecast_return(self, regular_trading_days: int = 252) -> float:
+        """
+        Calculate the forecasted return of the portfolio.
+        """
+        # Validate the input for regular trading days
         if not isinstance(regular_trading_days, int):
             raise TypeError(f"Expected 'regular_trading_days' to be an integer, but got {type(regular_trading_days).__name__}.")
         if regular_trading_days <= 0:
@@ -281,40 +348,45 @@ class Portfolio_Optimised_Functions:
         # Compute portfolio weights
         portfolio_proportions = self.calculate_pf_proportioned_allocation()
 
-        # Calculate the expected return
+        # Calculate the expected return using stratified average
         portfolio_forecast_return = calculate_stratified_average(portfolio_historical_return.values, portfolio_proportions)
 
-        # Assign to instance variable
+        # Assign the calculated forecast return to an instance variable
         self.pf_forecast_return = portfolio_forecast_return
         
         return portfolio_forecast_return
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: BETA & DISPERSION ~~~~~~~~~~~~~~~~~~~~~~
-    
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: BETA & DISPERSION ~~~~~~~~~~~~~~~~~~~~~~
+
     def calculate_pf_beta_coefficient(self) -> float:
-        
+        """
+        Calculate the beta coefficient of the portfolio.
+        """
         # Determine portfolio allocations
         portfolio_proportions = self.calculate_pf_proportioned_allocation()
         
-        # Calculate the weighted mean of the Beta values of the stocks in the portfolio
-        beta_values = self.beta_dataframe.transpose()["beta"].values
-        pf_beta_coefficient = calculate_stratified_average(beta_values, portfolio_proportions)
+        # Extract beta values from the dataframe and calculate the weighted mean
+        beta_values = self.beta_dataframe.transpose()["beta coefficient"].values
+        beta_coefficient = calculate_stratified_average(beta_values, portfolio_proportions)
         
         # Store the calculated Beta as an instance variable
-        self.beta_coefficient = pf_beta_coefficient
+        self.beta_coefficient = beta_coefficient
         
-        return pf_beta_coefficient
-    
+        return beta_coefficient
+
     def calculate_pf_dispersion_matrix(self) -> pandas.DataFrame:
+        """
+        Calculate the dispersion matrix of the portfolio.
+        """
         # Compute daily returns of the asset price history
         asset_daily_return = calculate_daily_return(self.asset_price_history)
         
-        # Compute and return the dispersion matrix for the daily returns
+        # Compute and return the covariance matrix for the daily returns
         portfolio_dispersion_matrix = asset_daily_return.cov()
 
         return portfolio_dispersion_matrix
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: SHAPE ~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: SHAPE ~~~~~~~~~~~~~~~~~~~~~~
     
     def calculate_pf_portfolio_skewness(self) -> pandas.Series:
         """
@@ -345,24 +417,34 @@ class Portfolio_Optimised_Functions:
         """
         pf_portfolio_kurtosis = self.asset_price_history.kurt()  # Compute kurtosis for each stock in the portfolio
         return pf_portfolio_kurtosis
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: VOLATILITY ~~~~~~~~~~~~~~~~~~~~~~
-    
+   
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: VOLATILITY ~~~~~~~~~~~~~~~~~~~~~~
+
     def calculate_pf_stock_volatility(self, regular_trading_days: int = 252) -> pandas.Series:
-  
+        """
+        Calculate the annualized volatility for each stock in the portfolio.
+        """
+        # Validate the input: Ensure it's a positive integer
         if not isinstance(regular_trading_days, int):
             raise TypeError(f"Expected 'regular_trading_days' to be an integer, but got {type(regular_trading_days).__name__}.")
-
         if regular_trading_days <= 0:
             raise ValueError("The 'regular_trading_days' should be a positive integer.")
         
+        # Calculate daily returns of the portfolio
         daily_returns = self.calculate_pf_daily_return()
+        
+        # Calculate daily volatilities for the returns
         daily_volatilities = daily_returns.std()
+        
+        # Annualize the stock volatilities
         pf_stock_volatility = daily_volatilities * numpy.sqrt(regular_trading_days)
         
         return pf_stock_volatility
-    
+
     def calculate_pf_volatility(self, regular_trading_days: int = 252) -> float:
-        
+        """
+        Calculate the annualized volatility of the portfolio.
+        """
         # Validate the input: Ensure it's a positive integer
         if not isinstance(regular_trading_days, int) or regular_trading_days <= 0:
             raise ValueError("regular_trading_days should be a positive integer.")
@@ -384,18 +466,23 @@ class Portfolio_Optimised_Functions:
         
         return annualized_portfolio_volatility
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: CAPITAL ALLOCATION & PROPORTIONMENT ~~~~~~~~~~~~~~~~~~~~~~ 
-    
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: CAPITAL ALLOCATION & PROPORTIONMENT ~~~~~~~~~~~~~~~~~~~~~~ 
+
     def calculate_pf_proportioned_allocation(self):
+        """
+        Calculate the proportioned allocation of the portfolio.
+        """
         pf_allocation = self.portfolio_distribution["Allocation"]
         total_allocation = self.capital_allocation
         proportioned_allocation = pf_allocation / total_allocation
         return proportioned_allocation
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: PERFORMANCE ~~~~~~~~~~~~~~~~~~~~~~
-    
-    def calculate_pf_sharpe_ratio(self) -> float:
+# ~~~~~~~~~~~~~~~~~~~~~~ PORTFOLIO METHODS: PERFORMANCE ~~~~~~~~~~~~~~~~~~~~~~
 
+    def calculate_pf_sharpe_ratio(self) -> float:
+        """
+        Calculate the Sharpe Ratio of the portfolio.
+        """
         # Compute the Sharpe Ratio of the portfolio based on its forecast return, volatility, and risk-free rate of return
         pf_sharpe_ratio = calculate_sharpe_ratio(
             self.pf_forecast_return, 
@@ -407,24 +494,28 @@ class Portfolio_Optimised_Functions:
         self.sharpe_ratio = pf_sharpe_ratio
         
         return pf_sharpe_ratio
-    
+
     def calculate_pf_sortino_ratio(self) -> float:
+        """
+        Calculate the Sortino Ratio of the portfolio.
+        """
         # Calculate Sortino Ratio using the forecast return, downside risk, and risk-free rate of return
         pf_sortino_ratio = calculate_sortino_ratio(
-            forecast_revenue=self.pf_forecast_return, 
-            downside_risk=self.downside_risk, 
-            risk_free_ROR=self.risk_free_ROR
+            self.pf_forecast_return, 
+            self.downside_risk, 
+            self.risk_free_ROR
         )
-
         return pf_sortino_ratio
 
-    # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MONTE CARLO SIMULATION ~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MONTE CARLO SIMULATION ~~~~~~~~~~~~~~~~~~~~~~
+
     def initialise_mcs_instance(self, mcs_iterations=999):
         """
-        Returns an instance of the MonteCarloMethodology class. If the instance doesn't exist, 
-        it initializes and returns a new one.
+        Initialize or retrieve the Monte Carlo Simulation instance.
         """
+        # Check if the Monte Carlo instance exists
         if self.monte_carlo_instance is None:
+            # If not, create a new instance with the provided parameters
             self.monte_carlo_instance = MonteCarloMethodology(
                 self.calculate_pf_daily_return(),
                 mcs_iterations=mcs_iterations,
@@ -433,10 +524,12 @@ class Portfolio_Optimised_Functions:
                 seed_allocation=self.calculate_pf_proportioned_allocation().values,
             )
         return self.monte_carlo_instance
-    
+
     def pf_mcs_optimised_portfolio(self, mcs_iterations=999):
- 
-        # Reset Monte Carlo instance for a fresh optimization
+        """
+        Optimize the portfolio using Monte Carlo Simulation.
+        """
+        # Reset the Monte Carlo instance for a fresh optimization
         self.monte_carlo_instance = None
 
         # Retrieve or initialize the Monte Carlo instance
@@ -446,19 +539,25 @@ class Portfolio_Optimised_Functions:
             return optimal_prop, optimal_prod
 
     def pf_mcs_visualisation(self):
-        """Delegate plotting results to the MonteCarloMethodology instance."""
+        """
+        Visualize the results of the Monte Carlo Simulation.
+        """
         monte_carlo_instance = self.initialise_mcs_instance()
         monte_carlo_instance.mcs_visualisation()
 
     def pf_mcs_print_attributes(self):
-        """Retrieve properties from the MonteCarloMethodology instance."""
+        """
+        Print the attributes of the Monte Carlo Simulation instance.
+        """
         monte_carlo_instance = self.initialise_mcs_instance()
         monte_carlo_instance.mcs_print_attributes()
-      
-    # ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MARKOWITZ EFFICIENT FRONTIER ~~~~~~~~~~~~~~~~~~~~~~
+
+# ~~~~~~~~~~~~~~~~~~~~~~ PF OPTIMISATION: MARKOWITZ EFFICIENT FRONTIER ~~~~~~~~~~~~~~~~~~~~~~
 
     def initialise_mef_instance(self) -> EfficientFrontierMaster:
-
+        """
+        Initialize or retrieve the Markowitz Efficient Frontier instance.
+        """
         if not hasattr(self, "efficient_frontier_instance") or self.efficient_frontier_instance is None:
             self.efficient_frontier_instance = EfficientFrontierMaster(
                 self.calculate_pf_historical_avg_return(regular_trading_days=1),
@@ -467,9 +566,11 @@ class Portfolio_Optimised_Functions:
                 regular_trading_days=self.regular_trading_days,
             )
         return self.efficient_frontier_instance
-    
-    def optimize_pf_mef_volatility_minimisation(self, show_details: bool = False) -> pandas.DataFrame:
 
+    def optimize_pf_mef_volatility_minimisation(self, show_details: bool = False) -> pandas.DataFrame:
+        """
+        Optimize the portfolio for minimum volatility using the Efficient Frontier.
+        """
         # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
         
@@ -483,63 +584,99 @@ class Portfolio_Optimised_Functions:
         return optimized_proportions
 
     def optimize_pf_mef_sharpe_maximisation(self, show_details: bool = False) -> pandas.DataFrame:
-
+        """
+        Optimize the portfolio for maximum Sharpe Ratio using the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
 
+        # Execute the optimization for Sharpe Ratio maximisation
         optimized_mef_proportions = mef_instance.mef_sharpe_maximisation()
 
+        # If show_details flag is set, display the properties of the efficient frontier optimization
         if show_details:
             mef_instance.mef_metrics(show_details=show_details)
 
         return optimized_mef_proportions
-    
-    def optimize_pf_mef_return(self, target_return, show_details=False) -> pandas.DataFrame:
 
+    def optimize_pf_mef_return(self, target_return, show_details=False) -> pandas.DataFrame:
+        """
+        Optimize the portfolio for a specific target return using the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
+
+        # Execute the optimization for the specified target return
         optimal_mef_proportions = mef_instance.mef_return(target_return)
 
+        # If show_details flag is set, display the properties of the efficient frontier optimization
         if show_details:
             mef_instance.mef_metrics(show_details=show_details)
 
         return optimal_mef_proportions
-    
-    def optimize_pf_mef_volatility(self, target_return, show_details=False) -> pandas.DataFrame:
 
+    def optimize_pf_mef_volatility(self, target_return, show_details=False) -> pandas.DataFrame:
+        """
+        Optimize the portfolio for a specific target volatility using the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
+
+        # Execute the optimization for the specified target volatility
         optimal_mef_proportions = mef_instance.mef_volatility(target_return)
 
+        # If show_details flag is set, display the properties of the efficient frontier optimization
         if show_details:
             mef_instance.mef_metrics(show_details=show_details)
 
         return optimal_mef_proportions
 
     def optimize_pf_mef_efficient_frontier(self, target_return=None) -> numpy.ndarray:
-
+        """
+        Evaluate the portfolio on the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
+
+        # Evaluate the portfolio on the efficient frontier
         frontier_data = mef_instance.mef_evaluate_mef(target_return)
+
         return frontier_data
-    
+
     def optimize_pf_plot_mef(self):
-            
-            mef_instance = self.initialise_mef_instance()
-            mef_instance.mef_plot_optimal_mef_points()
+        """
+        Plot the optimal points on the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
+        mef_instance = self.initialise_mef_instance()
+
+        # Plot the optimal points on the efficient frontier
+        mef_instance.mef_plot_optimal_mef_points()
 
     def optimize_pf_plot_vol_and_sharpe_optimal(self):
-
+        """
+        Plot the portfolio's volatility and Sharpe Ratio on the Efficient Frontier.
+        """
+        # Retrieve or create an instance of EfficientFrontier
         mef_instance = self.initialise_mef_instance()
+
+        # Plot the portfolio's volatility and Sharpe Ratio on the efficient frontier
         mef_instance.mef_plot_vol_and_sharpe_optimal()
-    
+   
 # ~~~~~~~~~~~~~~~~~~~~~~ PF VISUALISATIONS & REPORTING ~~~~~~~~~~~~~~~~~~~~~~
 
     def pf_stock_visualisation(self, regular_trading_days=252):
-        # annual mean returns of all stocks
+        """
+        Visualize the annualized returns of stocks against their volatility.
+        """
+        # Calculate the annual mean returns and volatility of all stocks
         asset_returns = self.calculate_pf_historical_avg_return(regular_trading_days=regular_trading_days)
         asset_volatility = self.calculate_pf_stock_volatility(regular_trading_days=regular_trading_days)
 
-        # Plotting the data with enhanced styling
+        # Plot the data with enhanced styling
         pyplot.scatter(asset_volatility, asset_returns, marker="8", s=95, color='magenta', edgecolor='black', alpha=0.75)
 
-        # Annotating the stocks on the scatter plot
+        # Annotate each stock on the scatter plot
         for x, annot_id in enumerate(asset_returns.index, start=0):
             pyplot.annotate(
                 annot_id,
@@ -551,7 +688,7 @@ class Portfolio_Optimised_Functions:
                 annotation_clip=None,
             )
 
-        # Setting axis labels and a title (only if they haven't been set yet)
+        # Set axis labels and a title (only if they haven't been set yet)
         if not pyplot.gca().get_xlabel():
             pyplot.xlabel('Stock Volatility')
         if not pyplot.gca().get_ylabel():
@@ -559,18 +696,28 @@ class Portfolio_Optimised_Functions:
         if not pyplot.gca().get_title():
             pyplot.title('Annualised Stock Returns vs. Volatility')
 
-        # Adjusting x and y axis limits
+        # Adjust the x and y axis limits for better visualization
         pyplot.xlim([min(pyplot.xlim()[0], asset_volatility.min() - 0.01), max(pyplot.xlim()[1], asset_volatility.max() + 0.01)])
         pyplot.ylim([min(pyplot.ylim()[0], asset_returns.min() - 0.01), max(pyplot.ylim()[1], asset_returns.max() + 0.01)])
 
-
     def pf_print_portfolio_attributes(self):
+        """
+        Print the portfolio's various attributes, including return metrics, risk metrics, distribution metrics, and other metrics.
+        """
         stats = self._return_metrics()
+        stats += "\n"
         stats += self._risk_metrics()
+        stats += "\n"
+        stats += self._distribution_metrics() 
+        stats += "\n" 
         stats += self._other_metrics()
-        return stats + "\n" + "*" * 100
+        stats += "\n"
+        print(stats + "\n" + "*" * 100)
 
     def _return_metrics(self):
+        """
+        Return the portfolio's return metrics, including forecast return, Sharpe ratio, and Sortino ratio.
+        """
         stats = f"📈 Forecast Return: {self.pf_forecast_return:0.3f}\n"
         stats += f"🚀 Sharpe Ratio: {self.sharpe_ratio:0.3f}\n"
         if self.sortino_ratio is not None:
@@ -580,13 +727,33 @@ class Portfolio_Optimised_Functions:
         return stats
 
     def _risk_metrics(self):
+        """
+        Return the portfolio's risk metrics, including portfolio volatility, downside risk, value at risk, and confidence interval.
+        """
         stats = f"🎢 Portfolio Volatility: {self.portfolio_volatility:0.3f}\n"
         stats += f"📉 Downside Risk: {self.downside_risk:0.4f}\n"
         stats += f"❗ Value at Risk: {self.value_at_risk:0.4f}\n"
         stats += f"🔒 Confidence Interval (Value at Risk): {self.confidence_interval_value_at_risk * 100:0.3f} %\n"
         return stats
 
+    def _distribution_metrics(self):
+        """
+        Return the portfolio's distribution metrics, including skewness, kurtosis, and financial index.
+        """
+        stats = f"⚖️ Skewness:\n{self.portfolio_skewness}\n"  
+        stats += "\n"
+        stats += f"🎯 Kurtosis:\n{self.portfolio_kurtosis}\n" 
+        stats += "\n" 
+        if self.financial_index is not None:
+            stats += f"📊 {self.financial_index}\n"
+        else:
+            stats += "📊 Data not available\n"
+        return stats
+
     def _other_metrics(self):
+        """
+        Return other metrics of the portfolio, including beta coefficient, trading horizon, and risk-free rate of return.
+        """
         stats = ""
         if self.beta_coefficient is not None:
             stats += f"🔄 Beta Coefficient: {self.beta_coefficient:0.3f}\n"
@@ -597,423 +764,8 @@ class Portfolio_Optimised_Functions:
         return stats
 
     def __str__(self):
+        """
+        Return a string representation of the portfolio, listing the stocks it contains.
+        """
         stock_id = ', '.join(self.portfolio_distribution.Name.values.tolist())
         return f"Portfolio containing information about stocks: {stock_id}"
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~ PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
-
-# ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
-
-def yfinance_api_invocation(stock_symbols, from_date=None, to_date=None):  
-
-    # Convert string dates to datetime objects if needed
-    if isinstance(from_date, str):
-        from_date = _str_to_datetime(from_date)  
-    
-    if isinstance(to_date, str):
-        to_date = _str_to_datetime(to_date)  
-    
-    # Retrieve the stock data
-    stock_data = _fetch_yfinance_data(stock_symbols, from_date, to_date)  
-
-    # Adjust the dataframe columns
-    formatted_stock_data = _adjust_dataframe_cols(stock_data, stock_symbols)  
-
-    return formatted_stock_data
-
-# Function to convert a date string to a datetime object
-def _str_to_datetime(date_input): 
-    try:
-        return datetime.datetime.strptime(date_input, "%Y-%m-%d") 
-    except ValueError:
-        raise ValueError(f"Incorrect date format for {date_input}. Expected format: YYYY-MM-DD.")  
-
-# Fetches the stock data from yfinance
-def _fetch_yfinance_data(stock_symbols, from_date, to_date): 
-    try:
-        import yfinance
-        return yfinance.download(stock_symbols, start=from_date, end=to_date)  
-    except ImportError:
-        raise ImportError(
-            "Please ensure that the package YFinance is installed, as it is prerequisited."
-        )
-    except Exception as download_error:
-        raise Exception(
-            "An error occurred while fetching stock data from Yahoo Finance via yfinance."
-        ) from download_error
-
-# ~~~~~~~~~~~~~~~~~~~~~~ TO FIX: PF ASSEMBLY & YFINANCE API INTEGRATION ~~~~~~~~~~~~~~~~~~~~~~
-
-# ~~~~~~~~~~~ Main function to fetch and format the stock data ~~~~~~~~~~~
-
-def yfinance_api_invocation(stock_symbols, from_date=None, to_date=None):  
-
-    # Convert string dates to datetime objects if needed
-    if isinstance(from_date, str):
-        from_date = _str_to_datetime(from_date)  
-    
-    if isinstance(to_date, str):
-        to_date = _str_to_datetime(to_date)  
-    
-    # Retrieve the stock data
-    stock_data = _fetch_yfinance_data(stock_symbols, from_date, to_date)  
-
-    # Adjust the dataframe columns
-    formatted_stock_data = _adjust_dataframe_cols(stock_data, stock_symbols)  
-
-    return formatted_stock_data
-
-# Function to convert a date string to a datetime object
-def _str_to_datetime(date_input): 
-    try:
-        return datetime.datetime.strptime(date_input, "%Y-%m-%d") 
-    except ValueError:
-        raise ValueError(f"Incorrect date format for {date_input}. Expected format: YYYY-MM-DD.")  
-
-# Fetches the stock data from yfinance
-def _fetch_yfinance_data(stock_symbols, from_date, to_date): 
-    try:
-        import yfinance
-        return yfinance.download(stock_symbols, start=from_date, end=to_date)  
-    except ImportError:
-        raise ImportError(
-            "Please ensure that the package YFinance is installed, as it is prerequisited."
-        )
-    except Exception as download_error:
-        raise Exception(
-            "An error occurred while fetching stock data from Yahoo Finance via yfinance."
-        ) from download_error
-
-# Adjusts the dataframe columns based on the stock names
-def _adjust_dataframe_cols(stock_dataframe, stock_symbols):  
-    if len(stock_symbols) > 0 and not isinstance(stock_dataframe.columns, pandas.MultiIndex):
-        mindex_col = [(col, stock_symbols[0]) for col in list(stock_dataframe.columns)] 
-        stock_dataframe.columns = pandas.MultiIndex.from_tuples(mindex_col, sortorder=None)  
-    return stock_dataframe
-
-# ~~~~~~~~~~~ Stock Data Column Adjustment Module ~~~~~~~~~~~
-
-def _identify_appropriate_column(stock_quant, stock_symbol, potential_columns, primary_id):
-    for column in potential_columns:
-        if stock_symbol in stock_quant.columns:
-            return stock_symbol
-        elif isinstance(stock_quant.columns, pandas.MultiIndex):
-            column = column.replace(".", "")
-            if column in stock_quant.columns:
-                if column not in primary_id:
-                    primary_id.append(column)
-                if stock_symbol in stock_quant[column].columns:
-                    return stock_symbol
-                else:
-                    raise ValueError(
-                        "Column entries in the second level of the MultiIndex within the pandas DataFrame cannot be located."
-                    )
-    raise ValueError("Column identifiers within the provided dataframe could not be located.")
-
-def _format_data_columns(stock_quant, mandatory_column_fields, primary_col_id):
-    if isinstance(stock_quant.columns, pandas.MultiIndex):
-        if len(primary_col_id) != 1:
-            raise ValueError("Presently, the system accommodates only a singular value or quantity per stock.")
-        return stock_quant[primary_col_id[0]].loc[:, mandatory_column_fields]
-    else:
-        return stock_quant.loc[:, mandatory_column_fields]
-
-def _fetch_stock_columns(stock_quant, stock_symbols, column_id):
-    mandatory_column_fields = []
-    primary_col_id = []
-
-    for i in range(len(stock_symbols)):
-        column_denomination = _identify_appropriate_column(stock_quant, stock_symbols[i], column_id, primary_col_id)
-        mandatory_column_fields.append(column_denomination)
-
-    stock_quant = _format_data_columns(stock_quant, mandatory_column_fields, primary_col_id)
-
-    # if only one data column per stock exists, rename column labels
-    # to the name of the corresponding stock
-    renamed_column_mapping = {}
-    if len(column_id) == 1:
-        for i, symbol in enumerate(stock_symbols):
-            renamed_column_mapping.update({(symbol, column_id[0]): symbol})
-        stock_quant.rename(columns=renamed_column_mapping, inplace=True)
-
-    return stock_quant
-
-# ~~~~~~~~~~~ API-Driven Portfolio Construction with YFinance Support and Dynamic Allocation Management ~~~~~~~~~~~
-
-def _portfolio_assembly_api(
-    stock_symbols,
-    apportionment=None,
-    start=None,
-    end=None,
-    api_type="yfinance",
-    index_symbol: str = None,
-):
-    pf_api_construct = Portfolio_Optimised_Methods()
-    index_data = pandas.DataFrame()
-    
-    stock_data = _fetch_stock_data_from_api(stock_symbols, start, end, api_type)
-    index_data = _fetch_index_data(index_symbol, start, end, api_type)
-    final_allocation = _get_portfolio_allocation(stock_symbols, apportionment)
-    
-    pf_api_construct = _portfolio_assembly_df(stock_data, final_allocation, index_data=index_data)
-    return pf_api_construct
-
-def _fetch_stock_data_from_api(stock_symbols, start, end, api_type):
-    if api_type == "yfinance":
-        return yfinance_api_invocation(stock_symbols, from_date=start, to_date=end)
-    else:
-        raise ValueError(f"Unsupported data API: {api_type}")
-
-def _fetch_index_data(index_symbol, start, end, api_type):
-    if index_symbol:
-        return _fetch_stock_data_from_api([index_symbol], start, end, api_type)
-    else:
-        return pandas.DataFrame()
-
-def _get_portfolio_allocation(stock_symbols, apportionment):
-    if apportionment is None:
-        return _compose_pf_stock_apportionment(column_title=stock_symbols)
-    return apportionment
-
-# ~~~~~~~~~~~ Stock Data Verification and Adjusted Close Retrieval ~~~~~~~~~~~
-
-def _verify_stock_presence_in_datacol(stock_symbols, stock_dataframe):
-    symbols_present = any((symbol in column for symbol in stock_symbols for column in stock_dataframe.columns))
-    return symbols_present
-
-def _retrieve_adjusted_close_from_dataframe(stock_df: pandas.DataFrame) -> pandas.Series:
-
-    if "Adj Close" not in stock_df.columns:
-        raise ValueError("The provided dataframe does not have an 'Adj Close' column.")
-    
-    adjust_close_data = stock_df["Adj Close"].squeeze(axis=None)
-    return adjust_close_data
-
-# ~~~~~~~~~~~  Portfolio Stock Apportionment ~~~~~~~~~~~
-
-def _compose_pf_stock_apportionment(column_title=None, stock_df=None):
-    _validate_input_exclusivity(column_title, stock_df)
-    _validate_input_types(column_title, stock_df)
-
-    if stock_df:
-        column_title = _extract_and_validate_names_from_data(stock_df)
-    
-    return _generate_balanced_allocation(column_title)
-
-def _generate_balanced_allocation(column_designation):
-    """Generate balanced allocation for each stock."""
-    allocation = [1.0 / len(column_designation) for _ in column_designation]
-    return pandas.DataFrame({"Allocation": allocation, "Title": column_designation})
-
-def _validate_input_exclusivity(column_title, stock_df):
-    """Ensure only one of 'column_title' or 'stock_df' is provided."""
-    if (column_title is not None and stock_df is not None) or (column_title is None and stock_df is None):
-        raise ValueError("Please ensure to provide either 'column_title' or 'stock_df', but refrain from providing both simultaneously.")
-
-def _validate_input_types(column_title, stock_df):
-    """Validate the types of provided arguments."""
-    if column_title and not isinstance(column_title, list):
-        raise ValueError("The data type for 'column_title' should be a list.")
-    if stock_df and not isinstance(stock_df, pandas.DataFrame):
-        raise ValueError("The data type for 'stock_df' should be a a pandas.DataFrame.")
-
-def _extract_and_validate_names_from_data(stock_df):
-    """Extract column names from stock_df and validate them."""
-    column_titles = stock_df.columns
-    column_prefixes = [title.split("-")[0].strip() for title in column_titles]
-    for x, prefix in enumerate(column_prefixes):
-        conflict_prefix = [compar_prefix for position, compar_prefix in enumerate(column_prefixes) if position != x]
-        if prefix in conflict_prefix:
-            raise ValueError(
-                f"The pandas.DataFrame 'stock_df' displays inconsistency in its column denominations."
-                + f" A substring of {prefix} were found in numerous instances, where prefix sharing has occured."
-                + "\n Suggested solutions:"
-                + "\n 1. Utilize the 'build_portfolio' function and offer a 'apportionment' dataframe indicating stock allocations."
-                + "\n This approach will aid in isolating accurate columns from the provided data."
-                + "\n 2. Ensure the dataframe provided doesn't have columns with similar prefixes, such as 'APPL' and 'APPL - Adj Close'."
-            )
-    return column_titles
-
-# ~~~~~~~~~~~ Portfolio Construction and Data Preparation Operations ~~~~~~~~~~~
-
-def _prepare_data(stock_data: pandas.DataFrame, apportionment: pandas.DataFrame, column_id_tags: List[str]) -> pandas.DataFrame:
-    """Prepare the data by fetching the required stock columns."""
-    if not _verify_stock_presence_in_datacol(apportionment['Name'].values, stock_data):
-        raise ValueError("Error: None of the provided stock titles were found in the provided dataframe.")
-    return _fetch_stock_columns(stock_data, apportionment['Name'].values, column_id_tags)
-
-def _add_stock_to_portfolio(portfolio: Portfolio_Optimised_Methods, stock_name: str, apportionment_row: pandas.Series, stock_data: pandas.DataFrame) -> None:
-    """Add an individual stock to the portfolio."""
-    stock_series = stock_data.loc[:, stock_name].copy(deep=True).squeeze()
-    stock_instance = Stock(apportionment_row, asset_price_history=stock_series)
-    portfolio.incorporate_stock(stock_instance, suspension_changes=True)
-
-def _portfolio_assembly_df(
-    stock_data: pandas.DataFrame,
-    apportionment: pandas.DataFrame = None,
-    column_id_tags: List[str] = None,
-    index_data: pandas.DataFrame = None,
-) -> Portfolio_Optimised_Methods:
-    
-    if apportionment is None:
-        apportionment = _compose_pf_stock_apportionment(stock_df=stock_data)
-    if column_id_tags is None:
-        column_id_tags = ["Adj Close"]
-
-    stock_data = _prepare_data(stock_data, apportionment, column_id_tags)
-    
-    portfolio_df = Portfolio_Optimised_Methods()
-    
-    if index_data is not None and not index_data.empty:
-        market_series = _retrieve_adjusted_close_from_dataframe(index_data)
-        portfolio_df.financial_index = Index(price_history=market_series)
-    
-    for i in range(len(apportionment)):
-        _add_stock_to_portfolio(portfolio_df, apportionment.iloc[i].Name, apportionment.iloc[i], stock_data)
-
-    portfolio_df._cascade_changes()
-    return portfolio_df
-
-# ~~~~~~~~~~~ Set Comparison Utility Functions ~~~~~~~~~~~
-
-def _all_in(set1, set2):
-    """
-    Check if all elements of set1 are present in set2.
-    
-    Parameters:
-    - set1 (iterable): The first collection of elements.
-    - set2 (iterable): The second collection of elements.
-    
-    Returns:
-    - bool: True if all elements of set1 are in set2, otherwise False.
-    """
-    return set(set1).issubset(set2)
-
-def _any_in(set1, set2):
-    """
-    Check if any element of set1 is present in set2.
-    
-    Parameters:
-    - set1 (iterable): The first collection of elements.
-    - set2 (iterable): The second collection of elements.
-    
-    Returns:
-    - bool: True if any element of set1 is in set2, otherwise False.
-    """
-    return bool(set(set1) & set(set2))
-
-def _diff(set1, set2):
-    """
-    Get elements that are in set2 but not in set1. I.e. the complement.
-    
-    Parameters:
-    - set1 (iterable): The first collection of elements.
-    - set2 (iterable): The second collection of elements.
-    
-    Returns:
-    - list: A list containing elements that are in set2 but not in set1.
-    """
-    return list(set(set2) - set(set1))
-
-# ~~~~~~~~~~~ Final Portfolio Composition, Argument Validation, and Integrity Check ~~~~~~~~~~~
-
-def formulate_final_portfolio(**kwargs):
-
-    # Message encouraging users to consult the function's documentation for guidance.
-    documentation_ref = (
-        "Please refer to the report examples for guidance on formatting."
-    )
-
-    # Message for when an unsupported argument is passed to the function.
-    forbidden_arg_err = (
-        "Unsupported arguments provided: {}\n"
-        "Valid arguments include: {}\n" + documentation_ref
-    )
-
-    # Message for when conflicting arguments are provided.
-    arg_conflict_err = (
-        "Argument conflict detected: {} cannot be used in combination with {}.\n" 
-        + documentation_ref
-    )
-    
-    provided_args = [
-        "apportionment",
-        "stock_symbols",
-        "start",
-        "end",
-        "stock_data",
-        "api_type",
-        "index_symbol",
-    ]
-    
-    _validate_arguments(kwargs, provided_args, forbidden_arg_err, documentation_ref)
-
-    fin_portfolio = Portfolio_Optimised_Methods()
-
-    if "stock_symbols" in kwargs.keys():
-        fin_portfolio = handle_api_assembly(kwargs, provided_args, arg_conflict_err)
-
-    elif "asset_price_history" in kwargs.keys():
-        fin_portfolio = handle_df_assembly(kwargs, provided_args, arg_conflict_err)
-
-    _check_portfolio_integrity(fin_portfolio, documentation_ref)
-
-    return fin_portfolio
-
-def _validate_arguments(kwargs, provided_args, forbidden_arg_err, documentation_ref):
-    if not kwargs:
-        raise ValueError(
-            "Error:\nbuild_portfolio() requires input arguments.\n" + documentation_ref
-        )
-    
-    if not _all_in(kwargs.keys(), provided_args):
-        forbidden_arg = _diff(provided_args, kwargs.keys())
-        raise ValueError(forbidden_arg_err.format(forbidden_arg, provided_args))
-
-
-def handle_api_assembly(kwargs, provided_args, arg_conflict_err):
-    permissible_required_args = ["stock_symbols"]
-    permissible_args = [
-        "stock_symbols",
-        "apportionment",
-        "start",
-        "end",
-        "api_type",
-        "index_symbol",
-    ]
-    complement_args = _diff(permissible_args, provided_args)
-    if _all_in(permissible_required_args, kwargs.keys()):
-        if _any_in(complement_args, kwargs.keys()):
-            raise ValueError(arg_conflict_err.format(complement_args, permissible_required_args))
-        
-    return _portfolio_assembly_api(**kwargs)
-
-def handle_df_assembly(kwargs, provided_args, arg_conflict_error):
-    permissible_required_args = ["asset_price_data"]
-    permissible_args = ["asset_price_data", "apportionment"]
-    complement_args = _diff(permissible_args, provided_args)
-    if _all_in(permissible_required_args, kwargs.keys()):
-        if _any_in(complement_args, kwargs.keys()):
-            raise ValueError(arg_conflict_error.format(complement_args, permissible_required_args))
-
-    return _portfolio_assembly_df(**kwargs)
-
-
-def _check_portfolio_integrity(fin_portfolio, documentation_ref):
-    if (
-        fin_portfolio.portfolio_distribution.empty
-        or fin_portfolio.asset_price_history.empty
-        or not fin_portfolio.stock_objects
-        or any(
-            attr is None for attr in [
-                fin_portfolio.pf_forecast_return, fin_portfolio.portfolio_volatility, fin_portfolio.downside_risk,
-                fin_portfolio.sharpe_ratio, fin_portfolio.sortino_ratio, fin_portfolio.portfolio_skewness, fin_portfolio.portfolio_kurtosis
-            ]
-        )
-    ):
-        raise ValueError(
-            "This point should not be reached."
-            + "An issue occurred during the instantiation of the Portfolio."
-            + documentation_ref
-        )
