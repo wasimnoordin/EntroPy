@@ -1,5 +1,0 @@
-setup.py
-EntroPy.egg-info/PKG-INFO
-EntroPy.egg-info/SOURCES.txt
-EntroPy.egg-info/dependency_links.txt
-EntroPy.egg-info/top_level.txt
