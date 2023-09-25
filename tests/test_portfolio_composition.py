@@ -32,7 +32,7 @@ yf_allocations = pandas.DataFrame({"Allocation": equal_allocations, "Name": name
 start = datetime.datetime(2018, 1, 1)
 end = "2023-01-01"
 
-# create kwargs to be passed to build_portfolio
+# create kwargs to be passed to formulate_final_portfolio
 # Base configuration
 base_config = {
     "stock_symbols": names_yf,

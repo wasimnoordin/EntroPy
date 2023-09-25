@@ -319,7 +319,7 @@ def generate_error_message(conflicting_name):
         f"The pandas.DataFrame 'stock_df' displays inconsistency in its column denominations."
         + f" A substring of {conflicting_name} were found in numerous instances, where prefix sharing has occured."
         + "\n Suggested solutions:"
-        + "\n 1. Utilize the 'build_portfolio' function and offer a 'apportionment' dataframe indicating stock allocations."
+        + "\n 1. Utilize the 'formulate_final_portfolio' function and offer a 'apportionment' dataframe indicating stock allocations."
         + "\n This approach will aid in isolating accurate columns from the provided data."
         + "\n 2. Ensure the dataframe provided doesn't have columns with similar prefixes, such as 'APPL' and 'APPL - Adj Close'."
     )
@@ -461,7 +461,7 @@ def validate_kwargs(kwargs, provided_args):
     
     # Check if any arguments were provided
     if not kwargs:
-        raise ValueError(f"build_portfolio() requires input arguments.\n{documentation_ref}")
+        raise ValueError(f"formulate_final_portfolio() requires input arguments.\n{documentation_ref}")
     
     # Check if any unsupported arguments were provided
     if not _contains_all(kwargs.keys(), provided_args):
