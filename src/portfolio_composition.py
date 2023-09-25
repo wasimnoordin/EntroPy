@@ -319,7 +319,7 @@ def generate_error_message(conflicting_name):
         f"The pandas.DataFrame 'stock_df' displays inconsistency in its column denominations."
         + f" A substring of {conflicting_name} were found in numerous instances, where prefix sharing has occured."
         + "\n Suggested solutions:"
-        + "\n 1. Utilize 'formulate_final_portfolio' function and offer a 'apportionment' dataframe indicating stock allocations."
+        + "\n 1. Utilize 'formulate_final_portfolio' and offer a 'apportionment' dataframe indicating stock allocations."
         + "\n This approach will aid in isolating accurate columns from the provided data."
         + "\n 2. Ensure the dataframe provided doesn't have columns with similar prefixes, such as 'APPL' and 'APPL - Adj Close'."
     )
